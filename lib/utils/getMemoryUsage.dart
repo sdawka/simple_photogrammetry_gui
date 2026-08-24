@@ -9,7 +9,7 @@
 
 //   try {
 //     final result = GlobalMemoryStatusEx(memoryStatus);
-    
+
 //     if (result != 0) {
 //       final freeBytes = memoryStatus.ref.ullAvailPhys;
 //       return freeBytes ~/ (1024 * 1024);
@@ -20,17 +20,16 @@
 //   return null;
 // }
 
-
 // Future<int?> getFreeMemoryLinuxMB() async {
 //   if (!Platform.isLinux) return null;
-  
+
 //   try {
 //     final file = File('/proc/meminfo');
 //     final lines = await file.readAsLines();
-    
+
 //     for (final line in lines) {
 //       if (line.startsWith('MemAvailable:')) {
-        
+
 //         final kbStr = line.replaceAll(RegExp(r'[^0-9]'), '');
 //         final kb = int.parse(kbStr);
 //         return kb ~/ 1024;

@@ -15,10 +15,9 @@ String gpu_cpu_type = resolveGpuType(Platform.environment);
 String poissonExtraFlags = "--pointWeight 10 --samplesPerNode 2 --confidence";
 String surfaceTrimmerExtraFlags = "--removeIslands";
 String decimationArgs = "-t 1";
-String meshingExtraFlags =
-    "--target-face-num 0 --crop-to-roi 1 --roi-border 10";
+String meshingExtraFlags = "--target-face-num 0 --crop-to-roi 1 --roi-border 10";
 String meshing_type = "poissonrecon";
-String currentVersionTag = "V1.1.5";
+String currentVersionTag = "v1.1.6";
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,10 +39,7 @@ void main() async {
   if (Platform.isWindows) {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    gpu_cpu_type = normalizeGpuType(
-      prefs.getString("gpu_cpu_type"),
-      fallback: "cuda",
-    );
+    gpu_cpu_type = normalizeGpuType(prefs.getString("gpu_cpu_type"), fallback: "cuda");
   }
 
   runApp(MaterialApp(home: ScanningScreenView(ScanningScreenModel())));

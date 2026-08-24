@@ -9,18 +9,12 @@ void main() {
 
     for (final gpuType in ['cpu', 'amd', 'cuda']) {
       test('accepts $gpuType', () {
-        expect(
-          resolveGpuType({'SIMPLE_PHOTOGRAMMETRY_GPU_TYPE': gpuType}),
-          gpuType,
-        );
+        expect(resolveGpuType({'SIMPLE_PHOTOGRAMMETRY_GPU_TYPE': gpuType}), gpuType);
       });
     }
 
     test('uses the CPU fallback for an unknown value', () {
-      expect(
-        resolveGpuType(const {'SIMPLE_PHOTOGRAMMETRY_GPU_TYPE': 'metal'}),
-        'cpu',
-      );
+      expect(resolveGpuType(const {'SIMPLE_PHOTOGRAMMETRY_GPU_TYPE': 'metal'}), 'cpu');
     });
 
     test('supports the Windows missing-preference fallback', () {

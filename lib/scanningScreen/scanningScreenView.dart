@@ -43,6 +43,10 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
 
   bool photogrammetry_or_splat = false;
 
+  String logs = "";
+
+  bool displayLogs = false;
+
   // String freeMem = "Waiting";
 
   @override
@@ -55,48 +59,42 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
     // Timer.periodic(Duration(milliseconds: 500),(_) async {
     //   freeMem = (await getFreeMemory()).toString();
     //   setState(() {
-        
+
     //   });
     // });
 
     checkForUpdates(currentVersionTag).then((newVersion) {
       if (newVersion != null) {
-        
-                              var alert = AlertDialog(
-                                backgroundColor: HexColor("#282828"),
-                                title: Text(
-                                  "A New Version is Available",
-                                  style: TextStyle(color: HexColor("#ebdbb2")),
-                                ),
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    linkWidget("Download Here: https://github.com/edin45/simple_photogrammetry_gui/releases/latest", "https://github.com/edin45/simple_photogrammetry_gui/releases/latest"),
-                                    // linkWidget("2. OpenMVS", "https://github.com/cdcseacave/openMVS"),
-                                    // linkWidget("3. mvs-texturing", "https://github.com/nmoehrle/mvs-texturing"),
-                                    // linkWidget("4. pymeshlab", "https://github.com/cnr-isti-vclab/PyMeshLab"),
-                                    // linkWidget("5. brush", "https://github.com/ArthurBrussee/brush"),
-                                    // linkWidget("6. PoissonRecon", "https://github.com/mkazhdan/PoissonRecon"),
-                                    Padding(padding: EdgeInsets.all(8)),
-                                    TextButton(
-                                            onPressed: () async {
+        var alert = AlertDialog(
+          backgroundColor: HexColor("#282828"),
+          title: Text("A New Version is Available", style: TextStyle(color: HexColor("#ebdbb2"))),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              linkWidget(
+                "Download Here: https://github.com/edin45/simple_photogrammetry_gui/releases/latest",
+                "https://github.com/edin45/simple_photogrammetry_gui/releases/latest",
+              ),
+              // linkWidget("2. OpenMVS", "https://github.com/cdcseacave/openMVS"),
+              // linkWidget("3. mvs-texturing", "https://github.com/nmoehrle/mvs-texturing"),
+              // linkWidget("4. pymeshlab", "https://github.com/cnr-isti-vclab/PyMeshLab"),
+              // linkWidget("5. brush", "https://github.com/ArthurBrussee/brush"),
+              // linkWidget("6. PoissonRecon", "https://github.com/mkazhdan/PoissonRecon"),
+              Padding(padding: EdgeInsets.all(8)),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
 
-                                              Navigator.pop(context);
+                  // photogrammetry_or_splat = true;
 
-                                              // photogrammetry_or_splat = true;
-                                              
-                                              // setState(() {});
-
-                                            },
-                                            child: Text(
-                                              "Later",
-                                              style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 18),
-                                            ))
-                                  ],
-                                ),
-                              );
-                              showDialog(context: context, builder: (_) => alert);
-                            
+                  // setState(() {});
+                },
+                child: Text("Later", style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 18)),
+              ),
+            ],
+          ),
+        );
+        showDialog(context: context, builder: (_) => alert);
       }
     });
 
@@ -104,398 +102,531 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
       hasAllDependencies = await widget.model.checkDependencies(this);
       setState(() {});
     }
+
     asyncTasks();
-    
   }
 
   @override
   Widget build(BuildContext context) {
     bool running = status != "" && status != "Done" && !status.contains("Failed");
 
-    return DynamicColorBuilder(builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-      colorScheme = darkDynamic ?? const ColorScheme.dark();
-      return Scaffold(
-        backgroundColor: HexColor("#282828"),
-        body: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              children: [
-                TitleBar(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: GestureDetector(
-                            onTap: () {
-                              var alert;
-                              alert = AlertDialog(
-                                backgroundColor: HexColor("#282828"),
-                                // title: Text(
-                                //   "Scan Settings:",
-                                //   style: TextStyle(color: HexColor("#ebdbb2")),
-                                // ),
-                                content: SettingsAlert(),
-                                
-                              );
-                              showDialog(context: context, builder: (_) => alert);
-                            },
-                            child: Container(
-                              color: Colors.transparent,
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Icon(Icons.settings,color: HexColor("#ebdbb2"),),
-                              ),
-                            ),
-                          ),
-                  ),
-                  Align(
-                          alignment: Alignment.topRight,
-                          child: GestureDetector(
-                            onTap: () {
-                              var alert = AlertDialog(
-                                backgroundColor: HexColor("#282828"),
-                                title: Text(
-                                  "Simple photogrammetry gui is based on:",
-                                  style: TextStyle(color: HexColor("#ebdbb2")),
-                                ),
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    linkWidget("1. Colmap", "https://colmap.github.io/"),
-                                    linkWidget("2. OpenMVS", "https://github.com/cdcseacave/openMVS"),
-                                    linkWidget("3. mvs-texturing", "https://github.com/nmoehrle/mvs-texturing"),
-                                    linkWidget("4. pymeshlab", "https://github.com/cnr-isti-vclab/PyMeshLab"),
-                                    linkWidget("5. brush", "https://github.com/ArthurBrussee/brush"),
-                                    linkWidget("6. PoissonRecon", "https://github.com/mkazhdan/PoissonRecon"),
-                                  ],
-                                ),
-                              );
-                              showDialog(context: context, builder: (_) => alert);
-                            },
-                            child: Container(
-                              color: Colors.transparent,
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Icon(Icons.question_mark,color: HexColor("#ebdbb2"),),
-                              ),
-                            ),
-                          ))
-                ],)
-              ],
-            ),
-
-            // Text("$freeMem", style: TextStyle(color: Colors.white,fontSize: 20),),
-            isDownloadingDependencies
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          color: HexColor("#458588"),
-                        ),
-                        Text(
-                          "downloading dependencies...",
-                          style: TextStyle(color: HexColor("#ebdbb2")),
-                        )
-                      ],
-                    ),
-                  )
-                : Stack(
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        colorScheme = darkDynamic ?? const ColorScheme.dark();
+        return Scaffold(
+          backgroundColor: HexColor("#282828"),
+          body: Stack(
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 75.0),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                child: AnimatedContainer(duration: const Duration(milliseconds: 80),child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Text("Photogrammetry",style: TextStyle(color: HexColor("#282828")),),
-                                ),decoration: BoxDecoration( color: !photogrammetry_or_splat ? HexColor("#458588") : HexColor("#928374"),borderRadius: BorderRadius.only(topLeft: Radius.circular(10), bottomLeft: Radius.circular(10))),),
-                                onTap: () {
-                                  photogrammetry_or_splat = false;
-                                  setState(() {});
-                                },
-                              ),
-                              GestureDetector(
-                                child: AnimatedContainer(duration: const Duration(milliseconds: 80),child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Text("Gaussian Splatting",style: TextStyle(color: HexColor("#282828")),),
-                                ),decoration: BoxDecoration(color: photogrammetry_or_splat ? HexColor("#458588") : HexColor("#928374"),borderRadius: BorderRadius.only(topRight: Radius.circular(10), bottomRight: Radius.circular(10))),),
-                                onTap: () {
-                                  if(gpu_cpu_type == "cpu") {
-                                    var alert = AlertDialog(
-                                      backgroundColor: HexColor("#282828"),
-                                      title: Text(
-                                        "Gaussian Splatting is unavailable in the CPU-Only Version - however it may work on AMD Gpus",
-                                        style: TextStyle(color: HexColor("#ebdbb2")),
-                                      ),
-                                      
-                                      
-                                      content: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          TextButton(
-                                            onPressed: () async {
-
-                                              Navigator.pop(context);
-
-                                              photogrammetry_or_splat = true;
-                                              
-                                              setState(() {});
-
-                                            },
-                                            child: Text(
-                                              "Continue",
-                                              style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 18),
-                                            ))
-                                        ],
-                                      ),
-                                    );
-                                    showDialog(context: context, builder: (_) => alert);
-                                  }else{
-                                    photogrammetry_or_splat = true;
-                                    setState(() {});
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                          /*const Padding(padding: EdgeInsets.all(8)),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              RoundCheckBox(
-                                size: 30,
-                                isChecked: reconstructAndTextureMesh,
-                                checkedColor: HexColor("#458588"),
-                                disabledColor: colorScheme.background,
-                                uncheckedColor: colorScheme.background,
-                                checkedWidget: Icon(
-                                  Icons.check,
-                                  color: HexColor("#282828"),
-                                ),
-                                onTap: (selected) {
-                                  reconstructAndTextureMesh = (selected ?? false);
-                                  setState(() {});
-                                },
-                              ),
-                              const Padding(padding: EdgeInsets.all(5)),
-                              Text(
-                                'Reconstruct & Texture Mesh (High memory usage)',
-                                style: TextStyle(color: HexColor("#ebdbb2"), fontWeight: FontWeight.normal),
-                              )
-                            ],
-                          ),*/
-                          const Padding(padding: EdgeInsets.all(10.0)),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                imageFolder == "" ? "No image folder selected" : imageFolder,
-                                style: TextStyle(color: HexColor("#ebdbb2"), fontWeight: FontWeight.w200),
-                              ),
-                              const Padding(padding: EdgeInsets.all(10.0)),
-                              TextButton(
-                                onPressed: () async {
-                        
-                                  
-                        
-                        
-                                  if(Platform.isWindows || await checkZenity()) {
-                        
-                                    final String? directoryPath = await getDirectoryPath();
-                                    if (directoryPath == null) {
-                                      // Operation was canceled by the user.
-                                      // return;
-                                    }else{
-                                      imageFolder = directoryPath;
-                                    }
-                        
-                                  }else{
-                                    widget.model.showAlert(colorScheme, context, "Missing Dependency", [
-                                      TextButton(
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                          },
-                                          child: Text(
-                                            "Ok",
-                                            style: TextStyle(color: HexColor("#ebdbb2")),
-                                          ))
-                                    ],desc: "Please install zenity\n\nDebian / Ubuntu: sudo apt-get install zenity\n\nArch: sudo pacman -S zenity", height: 150.0);
-                        
-                                  }
-                                  // String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-                                        
-                                  // if (selectedDirectory == null) {
-                                  //   // User canceled the picker
-                                  // } else {
-                                  //   imageFolder = selectedDirectory;
-                                  // }
-                                  setState(() {});
-                                },
-                                style: ButtonStyle(backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                  if (states.contains(MaterialState.pressed)) {
-                                    return HexColor("#83a598");
-                                  }
-                                  return HexColor("#458588");
-                                })),
-                                child: Text(
-                                  '${imageFolder == "" ? "Select" : "Change"} Image Folder',
-                                  style: TextStyle(color: HexColor("#282828")),
+                      TitleBar(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Align(
+                            alignment: Alignment.topLeft,
+                            child: GestureDetector(
+                              onTap: () {
+                                var alert;
+                                alert = AlertDialog(
+                                  backgroundColor: HexColor("#282828"),
+                                  // title: Text(
+                                  //   "Scan Settings:",
+                                  //   style: TextStyle(color: HexColor("#ebdbb2")),
+                                  // ),
+                                  content: SettingsAlert(this),
+                                );
+                                showDialog(context: context, builder: (_) => alert);
+                              },
+                              child: Container(
+                                color: Colors.transparent,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Icon(Icons.settings, color: HexColor("#ebdbb2")),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                          const Padding(padding: EdgeInsets.all(8)),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                outputFolder == "" ? "No output folder selected" : outputFolder,
-                                style: TextStyle(color: HexColor("#ebdbb2"), fontWeight: FontWeight.w200),
-                              ),
-                              const Padding(padding: EdgeInsets.all(10.0)),
-                              TextButton(
-                                onPressed: () async {
-                        
-                                  if(Platform.isWindows || await checkZenity()) {
-                        
-                                    final String? directoryPath = await getDirectoryPath();
-                                    if (directoryPath == null) {
-                                      // Operation was canceled by the user.
-                                      // return;
-                                    } else {
-                                      outputFolder = directoryPath;
-                                    }
-                        
-                                  }else{
-                                    widget.model.showAlert(colorScheme, context, "Missing Dependency", [
-                                      TextButton(
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                          },
-                                          child: Text(
-                                            "Ok",
-                                            style: TextStyle(color: HexColor("#ebdbb2")),
-                                          ))
-                                    ],desc: "Please install zenity\n\nDebian / Ubuntu: sudo apt-get install zenity\n\nArch: sudo pacman -S zenity",height: 150.0);
-                                  }
-                        
-                                  // String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-                                        
-                                  // if (selectedDirectory == null) {
-                                  //   // User canceled the picker
-                                  // } else {
-                                  //   outputFolder = selectedDirectory;
-                                  // }
-                                  setState(() {});
-                                },
-                                style: ButtonStyle(backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                  if (states.contains(MaterialState.pressed)) {
-                                    return HexColor("#83a598");
-                                  }
-                                  return HexColor("#458588");
-                                })),
-                                child: Text(
-                                  '${outputFolder == "" ? "Select" : "Change"} Output Folder',
-                                  style: TextStyle(color: HexColor("#282828")),
+                          Align(
+                            alignment: Alignment.topRight,
+                            child: GestureDetector(
+                              onTap: () {
+                                var alert = AlertDialog(
+                                  backgroundColor: HexColor("#282828"),
+                                  title: Text(
+                                    "Simple photogrammetry gui is based on:",
+                                    style: TextStyle(color: HexColor("#ebdbb2")),
+                                  ),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      linkWidget("1. Colmap", "https://colmap.github.io/"),
+                                      linkWidget("2. OpenMVS", "https://github.com/cdcseacave/openMVS"),
+                                      linkWidget(
+                                        "3. mvs-texturing",
+                                        "https://github.com/nmoehrle/mvs-texturing",
+                                      ),
+                                      linkWidget(
+                                        "4. pymeshlab",
+                                        "https://github.com/cnr-isti-vclab/PyMeshLab",
+                                      ),
+                                      linkWidget("5. brush", "https://github.com/ArthurBrussee/brush"),
+                                      linkWidget(
+                                        "6. PoissonRecon",
+                                        "https://github.com/mkazhdan/PoissonRecon",
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                showDialog(context: context, builder: (_) => alert);
+                              },
+                              child: Container(
+                                color: Colors.transparent,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Icon(Icons.question_mark, color: HexColor("#ebdbb2")),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                          const Padding(padding: EdgeInsets.all(8)),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              !photogrammetry_or_splat ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  running ? Container() : startButtonWidget("Start - Low Quality",HexColor("#98971a"),HexColor("#b8bb26"),2),
-                                  const Padding(padding: EdgeInsets.all(8)),
-                                  running ? Container() : startButtonWidget("Start - Medium Quality",HexColor("#458588"),HexColor("#83a598"),1),
-                                  const Padding(padding: EdgeInsets.all(8)),
-                                  running ? Container() : startButtonWidget("Start - High Quality",HexColor("#d79921"),HexColor("#fabd2f"),0),
-                                ]
-                              ) : running ? Container() : startButtonWidget("Start",HexColor("#458588"),HexColor("#83a598"),1),
-                              running
-                                  ? TextButton(
-                                      onPressed: () async {
-                                        stop = true;
-                                        status = "Stopping...";
-                                        widget.model.stop(this);
-                                        setState(() {});
-                                      },
-                                      style: ButtonStyle(backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                        if (states.contains(MaterialState.pressed)) {
-                                          return colorScheme.errorContainer;
-                                        }
-                                        return colorScheme.error;
-                                      })),
-                                      child: Text(
-                                        'Stop',
-                                        style: TextStyle(color: colorScheme.onError),
-                                      ),
-                                    )
-                                  : Container(),
-                            ],
-                          ),
-                          const Padding(padding: EdgeInsets.all(20)),
-                          Text(
-                            status,
-                            style: TextStyle(fontSize: 21, color: HexColor("#ebdbb2")),
-                          ),
-                          const Padding(padding: EdgeInsets.all(10)),
-                          running
-                              ? Center(
-                                  child: SizedBox(
-                                      width: 150,
-                                      child: LinearProgressIndicator(
-                                        backgroundColor: HexColor("#458588"),
-                                        color: HexColor("#282828"),
-                                      )),
-                                )
-                              : Container()
-                        ]),
+                        ],
                       ),
-                      
                     ],
                   ),
-            gpu_cpu_type != "cuda" ? Container(height: 70,) : Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Row(
-                            mainAxisAlignment: MainAxisAlignment.start,
+              
+                  // Text("$freeMem", style: TextStyle(color: Colors.white,fontSize: 20),),
+                  isDownloadingDependencies
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              RoundCheckBox(
-                                size: 30,
-                                isChecked: useGpu,
-                                checkedColor: HexColor("#458588"),
-                                disabledColor: HexColor("#282828"),
-                                uncheckedColor: HexColor("#282828"),
-                                checkedWidget: Icon(
-                                  Icons.check,
-                                  color: HexColor("#282828"),
-                                ),
-                                onTap: (selected) {
-                                  useGpu = selected ?? true;
-                                  setState(() {});
-                                },
-                              ),
-                              const Padding(padding: EdgeInsets.all(5)),
+                              CircularProgressIndicator(color: HexColor("#458588")),
                               Text(
-                                'Use GPU when possible',
-                                style: TextStyle(color: HexColor("#ebdbb2"), fontWeight: FontWeight.normal),
-                              )
+                                "downloading dependencies...",
+                                style: TextStyle(color: HexColor("#ebdbb2")),
+                              ),
                             ],
                           ),
-            ),
-          ],
-        ),
-      );
-    });
+                        )
+                      : Stack(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 75.0),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      GestureDetector(
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 80),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Text(
+                                              "Photogrammetry",
+                                              style: TextStyle(color: HexColor("#282828")),
+                                            ),
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: !photogrammetry_or_splat
+                                                ? HexColor("#458588")
+                                                : HexColor("#928374"),
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: Radius.circular(10),
+                                              bottomLeft: Radius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                        onTap: () {
+                                          photogrammetry_or_splat = false;
+                                          setState(() {});
+                                        },
+                                      ),
+                                      GestureDetector(
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 80),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Text(
+                                              "Gaussian Splatting",
+                                              style: TextStyle(color: HexColor("#282828")),
+                                            ),
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: photogrammetry_or_splat
+                                                ? HexColor("#458588")
+                                                : HexColor("#928374"),
+                                            borderRadius: BorderRadius.only(
+                                              topRight: Radius.circular(10),
+                                              bottomRight: Radius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                        onTap: () {
+                                          if (gpu_cpu_type == "cpu") {
+                                            var alert = AlertDialog(
+                                              backgroundColor: HexColor("#282828"),
+                                              title: Text(
+                                                "Gaussian Splatting is unavailable in the CPU-Only Version - however it may work on AMD Gpus",
+                                                style: TextStyle(color: HexColor("#ebdbb2")),
+                                              ),
+              
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  TextButton(
+                                                    onPressed: () async {
+                                                      Navigator.pop(context);
+              
+                                                      photogrammetry_or_splat = true;
+              
+                                                      setState(() {});
+                                                    },
+                                                    child: Text(
+                                                      "Continue",
+                                                      style: TextStyle(
+                                                        color: HexColor("#ebdbb2"),
+                                                        fontSize: 18,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                            showDialog(context: context, builder: (_) => alert);
+                                          } else {
+                                            photogrammetry_or_splat = true;
+                                            setState(() {});
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+              
+                                  const Padding(padding: EdgeInsets.all(10.0)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        imageFolder == "" ? "No image folder selected" : imageFolder,
+                                        style: TextStyle(
+                                          color: HexColor("#ebdbb2"),
+                                          fontWeight: FontWeight.w200,
+                                        ),
+                                      ),
+                                      const Padding(padding: EdgeInsets.all(10.0)),
+                                      TextButton(
+                                        onPressed: () async {
+                                          if (Platform.isWindows || await checkZenity()) {
+                                            final String? directoryPath = await getDirectoryPath();
+                                            if (directoryPath == null) {
+                                              // Operation was canceled by the user.
+                                              // return;
+                                            } else {
+                                              imageFolder = directoryPath;
+                                            }
+                                          } else {
+                                            widget.model.showAlert(
+                                              colorScheme,
+                                              context,
+                                              "Missing Dependency",
+                                              [
+                                                TextButton(
+                                                  onPressed: () {
+                                                    Navigator.pop(context);
+                                                  },
+                                                  child: Text(
+                                                    "Ok",
+                                                    style: TextStyle(color: HexColor("#ebdbb2")),
+                                                  ),
+                                                ),
+                                              ],
+                                              desc:
+                                                  "Please install zenity\n\nDebian / Ubuntu: sudo apt-get install zenity\n\nArch: sudo pacman -S zenity",
+                                              height: 150.0,
+                                            );
+                                          }
+                                          // String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+              
+                                          // if (selectedDirectory == null) {
+                                          //   // User canceled the picker
+                                          // } else {
+                                          //   imageFolder = selectedDirectory;
+                                          // }
+                                          setState(() {});
+                                        },
+                                        style: ButtonStyle(
+                                          backgroundColor: MaterialStateProperty.resolveWith((states) {
+                                            if (states.contains(MaterialState.pressed)) {
+                                              return HexColor("#83a598");
+                                            }
+                                            return HexColor("#458588");
+                                          }),
+                                        ),
+                                        child: Text(
+                                          '${imageFolder == "" ? "Select" : "Change"} Image Folder',
+                                          style: TextStyle(color: HexColor("#282828")),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Padding(padding: EdgeInsets.all(8)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        outputFolder == "" ? "No output folder selected" : outputFolder,
+                                        style: TextStyle(
+                                          color: HexColor("#ebdbb2"),
+                                          fontWeight: FontWeight.w200,
+                                        ),
+                                      ),
+                                      const Padding(padding: EdgeInsets.all(10.0)),
+                                      TextButton(
+                                        onPressed: () async {
+                                          if (Platform.isWindows || await checkZenity()) {
+                                            final String? directoryPath = await getDirectoryPath();
+                                            if (directoryPath == null) {
+                                              // Operation was canceled by the user.
+                                              // return;
+                                            } else {
+                                              outputFolder = directoryPath;
+                                            }
+                                          } else {
+                                            widget.model.showAlert(
+                                              colorScheme,
+                                              context,
+                                              "Missing Dependency",
+                                              [
+                                                TextButton(
+                                                  onPressed: () {
+                                                    Navigator.pop(context);
+                                                  },
+                                                  child: Text(
+                                                    "Ok",
+                                                    style: TextStyle(color: HexColor("#ebdbb2")),
+                                                  ),
+                                                ),
+                                              ],
+                                              desc:
+                                                  "Please install zenity\n\nDebian / Ubuntu: sudo apt-get install zenity\n\nArch: sudo pacman -S zenity",
+                                              height: 150.0,
+                                            );
+                                          }
+              
+                                          // String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+              
+                                          // if (selectedDirectory == null) {
+                                          //   // User canceled the picker
+                                          // } else {
+                                          //   outputFolder = selectedDirectory;
+                                          // }
+                                          setState(() {});
+                                        },
+                                        style: ButtonStyle(
+                                          backgroundColor: MaterialStateProperty.resolveWith((states) {
+                                            if (states.contains(MaterialState.pressed)) {
+                                              return HexColor("#83a598");
+                                            }
+                                            return HexColor("#458588");
+                                          }),
+                                        ),
+                                        child: Text(
+                                          '${outputFolder == "" ? "Select" : "Change"} Output Folder',
+                                          style: TextStyle(color: HexColor("#282828")),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Padding(padding: EdgeInsets.all(8)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      !photogrammetry_or_splat
+                                          ? Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                running
+                                                    ? Container()
+                                                    : startButtonWidget(
+                                                        "Start - Low Quality",
+                                                        HexColor("#98971a"),
+                                                        HexColor("#b8bb26"),
+                                                        2,
+                                                      ),
+                                                const Padding(padding: EdgeInsets.all(8)),
+                                                running
+                                                    ? Container()
+                                                    : startButtonWidget(
+                                                        "Start - Medium Quality",
+                                                        HexColor("#458588"),
+                                                        HexColor("#83a598"),
+                                                        1,
+                                                      ),
+                                                const Padding(padding: EdgeInsets.all(8)),
+                                                running
+                                                    ? Container()
+                                                    : startButtonWidget(
+                                                        "Start - High Quality",
+                                                        HexColor("#d79921"),
+                                                        HexColor("#fabd2f"),
+                                                        0,
+                                                      ),
+                                              ],
+                                            )
+                                          : running
+                                          ? Container()
+                                          : startButtonWidget(
+                                              "Start",
+                                              HexColor("#458588"),
+                                              HexColor("#83a598"),
+                                              1,
+                                            ),
+                                      running
+                                          ? TextButton(
+                                              onPressed: () async {
+                                                widget.model.showAlert(colorScheme, context, "Really Stop?", [
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      Navigator.pop(context);
+                                                      stop = true;
+                                                      status = "";
+                                                      widget.model.stop(this);
+                                                      setState(() {});
+                                                    },
+                                                    child: Text("Yes", style: TextStyle(color: HexColor("#ebdbb2"))),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      setState(() {});
+                                                    },
+                                                    child: Text("No", style: TextStyle(color: HexColor("#ebdbb2"))),
+                                                  ),
+                                                ]);
+                                                
+                                              },
+                                              style: ButtonStyle(
+                                                backgroundColor: MaterialStateProperty.resolveWith((
+                                                  states,
+                                                ) {
+                                                  if (states.contains(MaterialState.pressed)) {
+                                                    return colorScheme.errorContainer;
+                                                  }
+                                                  return colorScheme.error;
+                                                }),
+                                              ),
+                                              child: Text(
+                                                'Stop',
+                                                style: TextStyle(color: colorScheme.onError),
+                                              ),
+                                            )
+                                          : Container(),
+                                    ],
+                                  ),
+                                  const Padding(padding: EdgeInsets.all(20)),
+                                  Text(
+                                    status,
+                                    style: TextStyle(fontSize: 21, color: HexColor("#ebdbb2")),
+                                    
+                                  ),
+                                  const Padding(padding: EdgeInsets.all(10)),
+                                  running
+                                      ? Center(
+                                          child: SizedBox(
+                                            width: 150,
+                                            child: LinearProgressIndicator(
+                                              backgroundColor: HexColor("#458588"),
+                                              color: HexColor("#282828"),
+                                            ),
+                                          ),
+                                        )
+                                      : Container(),
+              
+                                      
+                                ],
+                              ),
+                            ),
+                          
+                            
+                          ],
+                        ),
+              
+                        
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      gpu_cpu_type == "cpu"
+                          ? Container(height: 70)
+                          : Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  RoundCheckBox(
+                                    size: 30,
+                                    isChecked: useGpu,
+                                    checkedColor: HexColor("#458588"),
+                                    disabledColor: HexColor("#282828"),
+                                    uncheckedColor: HexColor("#282828"),
+                                    checkedWidget: Icon(Icons.check, color: HexColor("#282828")),
+                                    onTap: (selected) {
+                                      useGpu = selected ?? true;
+                                      setState(() {});
+                                    },
+                                  ),
+                                  const Padding(padding: EdgeInsets.all(5)),
+                                  Text(
+                                    'Use GPU when possible',
+                                    style: TextStyle(
+                                      color: HexColor("#ebdbb2"),
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+              
+                            
+              
+                            TextButton(
+                              onPressed: () async {
+                                displayLogs = !displayLogs;
+                                setState(() {
+                                  
+                                });
+                              },
+                              child: Text(
+                                "${displayLogs ? "Hide" : "View"} Logs",
+                                style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 16),
+                                
+                              ),
+                            )
+              
+                            
+                    ],
+                  ),
+                
+                ],
+              ),
+            
+            Align(alignment: Alignment.bottomCenter,child: displayLogs ? Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Container(height: 160, width: 500, decoration: BoxDecoration(color: HexColor("#393939"),borderRadius: BorderRadius.all(Radius.circular(8))),  child:  Padding(
+                padding: const EdgeInsets.all(5.0),
+                child: SingleChildScrollView(
+                                  child: Text(logs,style: TextStyle(color: HexColor("#ebdbb2")),textAlign: TextAlign.center,),
+                                ),
+              )),
+            ) : Container(),),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   linkWidget(String text, String url) {
@@ -512,61 +643,63 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
     );
   }
 
-  
   startButtonWidget(String text, Color buttonColor, Color buttonColorPress, int qualityLevel) {
     return TextButton(
-                              onPressed: () async {
-                                if (imageFolder == "") {
-                                  widget.model.showAlert(colorScheme, context, "You have to select an image folder", [
-                                    TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                        },
-                                        child: Text(
-                                          "Ok",
-                                          style: TextStyle(color: HexColor("#ebdbb2")),
-                                        ))
-                                  ]);
-                                } else if (outputFolder == "") {
-                                  widget.model.showAlert(colorScheme, context, "You have to select an output folder", [
-                                    TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                        },
-                                        child: Text(
-                                          "Ok",
-                                          style: TextStyle(color: HexColor("#ebdbb2")),
-                                        ))
-                                  ]);
-                                } else {
-                                  stop = false;
-                                  widget.model.startScanningProcess(this, imageFolder, outputFolder,qualityLevel, photogrammetry_or_splat);
-                                }
-                              },
-                              //  : () {
-                              //   widget.model.startScanningProcess(this, imageFolder, outputFolder);
-                              // },
-                              style: ButtonStyle(backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                if (states.contains(MaterialState.pressed)) {
-                                  return buttonColorPress;
-                                }
-                                return buttonColor;
-                              })),
-                              child: Text(
-                                // hasAllDependencies ? 
-                                text,
-                                //  : "Install Dependencies (Needs Adminstrator rights)",
-                                style: TextStyle(color: HexColor("#282828")),
-                              ),
-                            );
+      onPressed: () async {
+        if (imageFolder == "") {
+          widget.model.showAlert(colorScheme, context, "You have to select an image folder", [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("Ok", style: TextStyle(color: HexColor("#ebdbb2"))),
+            ),
+          ]);
+        } else if (outputFolder == "") {
+          widget.model.showAlert(colorScheme, context, "You have to select an output folder", [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("Ok", style: TextStyle(color: HexColor("#ebdbb2"))),
+            ),
+          ]);
+        } else {
+          stop = false;
+          widget.model.scanningProcess(
+            this,
+            imageFolder,
+            outputFolder,
+            qualityLevel,
+            photogrammetry_or_splat,
+          );
+        }
+      },
+      style: ButtonStyle(
+        backgroundColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.pressed)) {
+            return buttonColorPress;
+          }
+          return buttonColor;
+        }),
+      ),
+      child: Text(
+        // hasAllDependencies ?
+        text,
+        //  : "Install Dependencies (Needs Adminstrator rights)",
+        style: TextStyle(color: HexColor("#282828")),
+      ),
+    );
   }
 
   checkZenity() async {
     bool hasZenity = true;
 
-    try{
-      hasZenity = (await runCommand("zenity", ["--help"],checkOnlyError: true)) == "";
-    }catch(e) {
+    try {
+      hasZenity = (await Process.run("which", ["zenity"])).exitCode == 0;
+    } catch (e) {
+      logs = "$e\n$logs";
+      setState(() {});
       hasZenity = false;
     }
 
@@ -574,43 +707,47 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
   }
 }
 
-
-
-
 class SettingsAlert extends StatefulWidget {
-  const SettingsAlert({super.key});
+  var view;
+  SettingsAlert(this.view,{super.key});
 
   @override
   State<SettingsAlert> createState() => _SettingsAlertState();
 }
 
 class _SettingsAlertState extends State<SettingsAlert> {
-
   settingWidget(String hint, String startingText, Function(String value) onChange) {
     TextEditingController controller = TextEditingController();
     controller.text = startingText;
-    return TextField(decoration: InputDecoration(label: Text(hint,style: TextStyle(color: HexColor("#ebdbb2"),)),
-    // 2. The border when the user clicks/focuses on the dropdown
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(
-                color: HexColor("#ebdbb2"), // The color when active
-                width: 2.0,
-              ),
-            ),
+    return TextField(
+      decoration: InputDecoration(
+        label: Text(hint, style: TextStyle(color: HexColor("#ebdbb2"))),
+        // 2. The border when the user clicks/focuses on the dropdown
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(
+            color: HexColor("#ebdbb2"), // The color when active
+            width: 2.0,
+          ),
+        ),
 
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(
-                color: HexColor("#ebdbb2"), // The color when active
-                width: 2.0,
-              ),
-            ),),controller: controller,onChanged: (value) {
-      if(value == "") {
-      }else{
-        onChange(value);
-      }
-    },style: TextStyle(color: HexColor("#ebdbb2")));
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(
+            color: HexColor("#ebdbb2"), // The color when active
+            width: 2.0,
+          ),
+        ),
+      ),
+      controller: controller,
+      onChanged: (value) {
+        if (value == "") {
+        } else {
+          onChange(value);
+        }
+      },
+      style: TextStyle(color: HexColor("#ebdbb2")),
+    );
     //  GestureDetector(
     //   onTap: () async {
     //     if (!await launchUrl(Uri.parse(url))) {
@@ -624,24 +761,28 @@ class _SettingsAlertState extends State<SettingsAlert> {
     // );
   }
 
-  settingWidgetDropdown(String hint, String startingText, Function(String value) onChange, List<DropdownMenuEntry<String>> items) {
-    
+  settingWidgetDropdown(
+    String hint,
+    String startingText,
+    Function(String value) onChange,
+    List<DropdownMenuEntry<String>> items,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       mainAxisSize: MainAxisSize.max,
       children: [
         DropdownMenu<String>(
           initialSelection: startingText,
-          label: Text('Feature Matching Type', style: TextStyle(color: HexColor("#ebdbb2")),),
+          label: Text('Feature Matching Type', style: TextStyle(color: HexColor("#ebdbb2"))),
           onSelected: (String? newValue) {
-            onChange(newValue??"exhaustive_matcher");
+            onChange(newValue ?? "exhaustive_matcher");
           },
           dropdownMenuEntries: items,
           textStyle: TextStyle(color: HexColor("#ebdbb2")),
-          menuStyle: const MenuStyle(backgroundColor: WidgetStatePropertyAll<Color>(Color.fromRGBO(40, 40, 40, 1))),
+          menuStyle: const MenuStyle(
+            backgroundColor: WidgetStatePropertyAll<Color>(Color.fromRGBO(40, 40, 40, 1)),
+          ),
           inputDecorationTheme: InputDecorationTheme(
-        
-        
             // 2. The border when the user clicks/focuses on the dropdown
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
@@ -658,91 +799,150 @@ class _SettingsAlertState extends State<SettingsAlert> {
                 width: 2.0,
               ),
             ),
-          )
-          
+          ),
         ),
       ],
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Container(
-                                  height: meshing_type == "openmvs" ? 460 : 560,
-                                  width: 400,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text("SfM Settings",style: TextStyle(color: HexColor("#ebdbb2"),fontSize: 15,fontWeight: FontWeight.bold),),
-                                      Padding(padding: EdgeInsets.all(1)),
+      height: meshing_type == "openmvs" ? 480 : 580,
+      width: 400,
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            "SfM Settings",
+            style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          Padding(padding: EdgeInsets.all(1)),
 
-                                      settingWidget("Max Cpu Threads (can help with ram usage) -1 == All",global_max_cpu_threads, (value) {
-                                        global_max_cpu_threads = value;
-                                      }),
-                                      
-                                      settingWidgetDropdown("Feature Matching Type",feature_matching_type, (value) {
-                                        feature_matching_type = value;
-                                      },[
-                                        DropdownMenuEntry(value: 'exhaustive_matcher', label: 'exhaustive_matcher',style: MenuItemButton.styleFrom(
-                                            foregroundColor: HexColor("#ebdbb2"), // Your text color here
-                                          ),),
-                                        DropdownMenuEntry(value: 'sequential_matcher', label: 'sequential_matcher',style: MenuItemButton.styleFrom(
-                                            foregroundColor: HexColor("#ebdbb2"), // Your text color here
-                                          ),),
-                                      ]),
-                                      
-                                      settingWidget("Sequential Matcher Overlap",sequential_matcher_overlap, (value) {
-                                        sequential_matcher_overlap = value;
-                                      }),
+          settingWidget(
+            "Max Cpu Threads (can help with ram usage) -1 == All",
+            global_max_cpu_threads,
+            (value) {
+              global_max_cpu_threads = value;
+            },
+          ),
 
-                                      Padding(padding: EdgeInsets.all(1)),
-                                      Text("Mesh Recon Settings",style: TextStyle(color: HexColor("#ebdbb2"),fontSize: 15,fontWeight: FontWeight.bold),),
-                                      Padding(padding: EdgeInsets.all(1)),
+          settingWidgetDropdown(
+            "Feature Matching Type",
+            feature_matching_type,
+            (value) {
+              feature_matching_type = value;
+            },
+            [
+              DropdownMenuEntry(
+                value: 'exhaustive_matcher',
+                label: 'exhaustive_matcher',
+                style: MenuItemButton.styleFrom(
+                  foregroundColor: HexColor("#ebdbb2"), // Your text color here
+                ),
+              ),
+              DropdownMenuEntry(
+                value: 'sequential_matcher',
+                label: 'sequential_matcher',
+                style: MenuItemButton.styleFrom(
+                  foregroundColor: HexColor("#ebdbb2"), // Your text color here
+                ),
+              ),
+            ],
+          ),
 
-                                      settingWidgetDropdown("Meshing Type",meshing_type, (value) {
-                                        meshing_type = value;
-                                        setState(() {
-                                          
-                                        });
-                                      },[
-                                        DropdownMenuEntry(value: 'openmvs', label: 'OpenMVS',style: MenuItemButton.styleFrom(
-                                            foregroundColor: HexColor("#ebdbb2"), // Your text color here
-                                          ),),
-                                        DropdownMenuEntry(value: 'poissonrecon', label: 'PoissonRecon',style: MenuItemButton.styleFrom(
-                                            foregroundColor: HexColor("#ebdbb2"), // Your text color here
-                                          ),),
-                                      ]),
+          settingWidget("Sequential Matcher Overlap", sequential_matcher_overlap, (value) {
+            sequential_matcher_overlap = value;
+          }),
 
-                                      meshing_type == "openmvs" ? settingWidget("Meshing Additional Arguments",meshingExtraFlags, (value) {
-                                        meshingExtraFlags = value;
-                                      }) : Container(),
+          Padding(padding: EdgeInsets.all(1)),
+          Text(
+            "Mesh Recon Settings",
+            style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          Padding(padding: EdgeInsets.all(1)),
 
-                                      meshing_type == "poissonrecon" ? settingWidget("PoissonRecon Additional Arguments",poissonExtraFlags, (value) {
-                                        poissonExtraFlags = value;
-                                      }) : Container(),
+          settingWidgetDropdown(
+            "Meshing Type",
+            meshing_type,
+            (value) {
+              meshing_type = value;
+              setState(() {});
+            },
+            [
+              DropdownMenuEntry(
+                value: 'openmvs',
+                label: 'OpenMVS',
+                style: MenuItemButton.styleFrom(
+                  foregroundColor: HexColor("#ebdbb2"), // Your text color here
+                ),
+              ),
+              DropdownMenuEntry(
+                value: 'poissonrecon',
+                label: 'PoissonRecon',
+                style: MenuItemButton.styleFrom(
+                  foregroundColor: HexColor("#ebdbb2"), // Your text color here
+                ),
+              ),
+            ],
+          ),
 
-                                      meshing_type == "poissonrecon" ? settingWidget("SurfaceTrimmer Additional Arguments",surfaceTrimmerExtraFlags, (value) {
-                                        surfaceTrimmerExtraFlags = value;
-                                      }) : Container(),
+          meshing_type == "openmvs"
+              ? settingWidget("Meshing Additional Arguments", meshingExtraFlags, (value) {
+                  meshingExtraFlags = value;
+                })
+              : Container(),
 
-                                      // meshing_type == "poissonrecon" ? settingWidget("Decimation Additional Arguments",decimationArgs, (value) {
-                                      //   decimationArgs = value;
-                                      // }) : Container(),
+          meshing_type == "poissonrecon"
+              ? settingWidget("PoissonRecon Additional Arguments", poissonExtraFlags, (value) {
+                  poissonExtraFlags = value;
+                })
+              : Container(),
 
+          meshing_type == "poissonrecon"
+              ? settingWidget("SurfaceTrimmer Additional Arguments", surfaceTrimmerExtraFlags, (
+                  value,
+                ) {
+                  surfaceTrimmerExtraFlags = value;
+                })
+              : Container(),
 
-                                      Padding(padding: EdgeInsets.all(1)),
-                                      Text("Gaussian Splat Settings",style: TextStyle(color: HexColor("#ebdbb2"),fontSize: 15,fontWeight: FontWeight.bold),),
-                                      Padding(padding: EdgeInsets.all(1)),
+          // meshing_type == "poissonrecon" ? settingWidget("Decimation Additional Arguments",decimationArgs, (value) {
+          //   decimationArgs = value;
+          // }) : Container(),
+          Padding(padding: EdgeInsets.all(1)),
+          Text(
+            "Gaussian Splat Settings",
+            style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          Padding(padding: EdgeInsets.all(1)),
 
-                                      settingWidget("Splat Training Steps",splat_training_steps, (value) {
-                                        splat_training_steps = value;
-                                      }),
-                                      
-                                    ],
-                                  ),
-                                );
+          settingWidget("Splat Training Steps", splat_training_steps, (value) {
+            splat_training_steps = value;
+          }),
+
+          Padding(padding: EdgeInsets.all(1)),
+          Text(
+            "Application Settings",
+            style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          Padding(padding: EdgeInsets.all(1)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              TextButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      widget.view.widget.model.dependencyAlert(widget.view, "Re-Download Dependencies");
+                      
+                    },
+                    child: Text("Re-Download Dependencies", style: TextStyle(color: HexColor("#ebdbb2"), fontSize: 14,decoration: TextDecoration.underline)),
+                  ),
+            ],
+          )
+        ],
+      ),
+    );
   }
 }
