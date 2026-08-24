@@ -546,6 +546,10 @@ class ScanningScreenModel {
             }
 
             gpu_cpu_type = computeType;
+            if(computeType == "cpu") {
+              view.useGpu = false;
+              view.setState(() {});
+            }
 
             if (Platform.isWindows) {
               final SharedPreferences prefs = await SharedPreferences.getInstance();

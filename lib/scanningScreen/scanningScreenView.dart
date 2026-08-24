@@ -33,7 +33,7 @@ class _ScanningScreenViewState extends State<ScanningScreenView> {
   late ColorScheme colorScheme;
 
   bool isDownloadingDependencies = false;
-  bool useGpu = gpu_cpu_type != "cuda" ? false : true;
+  bool useGpu = gpu_cpu_type == "cpu" ? false : true;
   bool stop = false;
   bool reconstructAndTextureMesh = false;
 
