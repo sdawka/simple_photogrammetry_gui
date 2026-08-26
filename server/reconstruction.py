@@ -26,11 +26,12 @@ PLY_TYPES = {
     "float64": "d",
 }
 
-VIEWER_SETTINGS_VERSION = 3
+VIEWER_SETTINGS_VERSION = 4
 VIEWER_BOUNDS_TRIM_FRACTION = 0.01
 VIEWER_BOUNDS_MAX_SAMPLES = 200_000
 SPARSE_FOCUS_TRIM_FRACTION = 0.05
 POINT3D_RECORD = struct.Struct("<QdddBBBdQ")
+IMAGE_POSE_RECORD = struct.Struct("<I7dI")
 
 
 def _uint64_header(path: Path) -> int | None:
@@ -133,6 +134,65 @@ def sparse_subject_bounds(
         return None
     bounds = [_trimmed_axis_bounds(axis, trim_fraction) for axis in axes]
     return tuple(item[0] for item in bounds), tuple(item[1] for item in bounds)
+
+
+def registered_camera_center(job_dir: Path) -> tuple[float, float, float] | None:
+    """Return the mean COLMAP camera center in reconstruction coordinates."""
+    model = _sparse_model_dir(job_dir)
+    if model is None:
+        return None
+    centers: list[tuple[float, float, float]] = []
+    try:
+        with (model / "images.bin").open("rb") as stream:
+            count_data = stream.read(8)
+            if len(count_data) != 8:
+                return None
+            count = struct.unpack("<Q", count_data)[0]
+            if count > 1_000_000:
+                return None
+            for _ in range(count):
+                data = stream.read(IMAGE_POSE_RECORD.size)
+                if len(data) != IMAGE_POSE_RECORD.size:
+                    return None
+                record = IMAGE_POSE_RECORD.unpack(data)
+                qw, qx, qy, qz = record[1:5]
+                tx, ty, tz = record[5:8]
+                norm = math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz)
+                if not math.isfinite(norm) or norm < 1e-12:
+                    return None
+                qw, qx, qy, qz = (value / norm for value in (qw, qx, qy, qz))
+                rotation = (
+                    (1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)),
+                    (2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)),
+                    (2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)),
+                )
+                translation = (tx, ty, tz)
+                center = tuple(
+                    -sum(rotation[row][axis] * translation[row] for row in range(3))
+                    for axis in range(3)
+                )
+                if all(math.isfinite(value) for value in center):
+                    centers.append(center)
+                for _ in range(4096):
+                    byte = stream.read(1)
+                    if not byte:
+                        return None
+                    if byte == b"\0":
+                        break
+                else:
+                    return None
+                points_data = stream.read(8)
+                if len(points_data) != 8:
+                    return None
+                point_count = struct.unpack("<Q", points_data)[0]
+                if point_count > 100_000_000:
+                    return None
+                stream.seek(point_count * 24, 1)
+    except OSError:
+        return None
+    if not centers:
+        return None
+    return tuple(sum(center[axis] for center in centers) / len(centers) for axis in range(3))
 
 
 def _read_ply_header(stream: BinaryIO) -> tuple[str, int, list[tuple[str, str]]]:
@@ -239,7 +299,18 @@ def viewer_settings_for_ply(path: Path, *, job_dir: Path | None = None) -> dict:
     fov = 55
     padding = 1.35 if focus else 1.12
     distance = radius / math.sin(math.radians(fov / 2)) * padding
-    position = [target[0], target[1], target[2] - distance]
+    camera_center = registered_camera_center(job_dir) if job_dir is not None else None
+    if camera_center is not None:
+        direction = [camera_center[axis] - target[axis] for axis in range(3)]
+        direction_length = math.sqrt(sum(value * value for value in direction))
+    else:
+        direction = [0.0, 0.0, -1.0]
+        direction_length = 1.0
+    if direction_length < 1e-12:
+        direction = [0.0, 0.0, -1.0]
+        direction_length = 1.0
+        camera_center = None
+    position = [target[axis] + direction[axis] / direction_length * distance for axis in range(3)]
     return {
         "version": 2,
         "tonemapping": "aces",
@@ -265,6 +336,7 @@ def viewer_settings_for_ply(path: Path, *, job_dir: Path | None = None) -> dict:
         "photogrammetry": {
             "settingsVersion": VIEWER_SETTINGS_VERSION,
             "framing": "sparse_subject" if focus else "robust_bounds",
+            "viewDirection": "registered_cameras" if camera_center is not None else "world_axis",
             "trimFraction": SPARSE_FOCUS_TRIM_FRACTION if focus else VIEWER_BOUNDS_TRIM_FRACTION,
             "bounds": {"minimum": list(minimum), "maximum": list(maximum)},
             "visibleBounds": {"minimum": list(visible_minimum), "maximum": list(visible_maximum)},
