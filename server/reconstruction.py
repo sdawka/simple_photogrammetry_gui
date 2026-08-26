@@ -26,6 +26,10 @@ PLY_TYPES = {
     "float64": "d",
 }
 
+VIEWER_SETTINGS_VERSION = 2
+VIEWER_BOUNDS_TRIM_FRACTION = 0.01
+VIEWER_BOUNDS_MAX_SAMPLES = 200_000
+
 
 def _uint64_header(path: Path) -> int | None:
     try:
@@ -113,43 +117,71 @@ def _read_ply_header(stream: BinaryIO) -> tuple[str, int, list[tuple[str, str]]]
     return encoding, vertex_count, properties
 
 
-def ply_bounds(path: Path) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+def ply_bounds(
+    path: Path,
+    *,
+    trim_fraction: float = 0.0,
+    max_samples: int = VIEWER_BOUNDS_MAX_SAMPLES,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Return exact or robust position bounds with bounded sampling memory.
+
+    Gaussian reconstructions often contain a few distant, translucent floaters.
+    Exact extrema remain available for callers that need them, while the viewer
+    requests percentile-trimmed bounds so those outliers do not make the useful
+    reconstruction appear tiny.
+    """
+    if not 0 <= trim_fraction < 0.5:
+        raise ValueError("trim_fraction must be between 0 and 0.5")
+    if max_samples <= 0:
+        raise ValueError("max_samples must be positive")
     with path.open("rb") as stream:
         encoding, count, properties = _read_ply_header(stream)
         indices = [next(i for i, item in enumerate(properties) if item[0] == axis) for axis in "xyz"]
         minimum = [math.inf, math.inf, math.inf]
         maximum = [-math.inf, -math.inf, -math.inf]
+        samples: list[list[float]] = [[], [], []]
+        sample_every = max(1, math.ceil(count / max_samples))
+
+        def include(position: list[float], vertex_index: int) -> None:
+            if not all(math.isfinite(value) for value in position):
+                return
+            for axis, value in enumerate(position):
+                minimum[axis] = min(minimum[axis], value)
+                maximum[axis] = max(maximum[axis], value)
+                if trim_fraction and vertex_index % sample_every == 0:
+                    samples[axis].append(value)
+
         if encoding == "binary_little_endian":
             row = struct.Struct("<" + "".join(PLY_TYPES[kind] for _, kind in properties))
-            for _ in range(count):
+            for vertex_index in range(count):
                 data = stream.read(row.size)
                 if len(data) != row.size:
                     raise ValueError("PLY vertex data is truncated")
                 values = row.unpack(data)
                 position = [float(values[index]) for index in indices]
-                if not all(math.isfinite(value) for value in position):
-                    continue
-                for axis, value in enumerate(position):
-                    minimum[axis] = min(minimum[axis], value)
-                    maximum[axis] = max(maximum[axis], value)
+                include(position, vertex_index)
         else:
-            for _ in range(count):
+            for vertex_index in range(count):
                 fields = stream.readline().split()
                 if len(fields) < len(properties):
                     raise ValueError("PLY vertex data is truncated")
                 position = [float(fields[index]) for index in indices]
-                if not all(math.isfinite(value) for value in position):
-                    continue
-                for axis, value in enumerate(position):
-                    minimum[axis] = min(minimum[axis], value)
-                    maximum[axis] = max(maximum[axis], value)
+                include(position, vertex_index)
     if not all(math.isfinite(value) for value in (*minimum, *maximum)):
         raise ValueError("PLY has no finite positioned vertices")
+    if trim_fraction and len(samples[0]) >= 100:
+        for axis in range(3):
+            samples[axis].sort()
+            last = len(samples[axis]) - 1
+            low = math.floor(last * trim_fraction)
+            high = math.ceil(last * (1 - trim_fraction))
+            minimum[axis] = samples[axis][low]
+            maximum[axis] = samples[axis][high]
     return tuple(minimum), tuple(maximum)
 
 
 def viewer_settings_for_ply(path: Path) -> dict:
-    minimum, maximum = ply_bounds(path)
+    minimum, maximum = ply_bounds(path, trim_fraction=VIEWER_BOUNDS_TRIM_FRACTION)
     target = [(low + high) / 2 for low, high in zip(minimum, maximum)]
     half_diagonal = math.sqrt(sum(((high - low) / 2) ** 2 for low, high in zip(minimum, maximum)))
     radius = max(half_diagonal, 0.01)
@@ -179,7 +211,9 @@ def viewer_settings_for_ply(path: Path) -> dict:
         "annotations": [],
         "startMode": "default",
         "photogrammetry": {
-            "framing": "bounds",
+            "settingsVersion": VIEWER_SETTINGS_VERSION,
+            "framing": "robust_bounds",
+            "trimFraction": VIEWER_BOUNDS_TRIM_FRACTION,
             "bounds": {"minimum": list(minimum), "maximum": list(maximum)},
         },
     }
@@ -195,7 +229,12 @@ def ensure_viewer_settings(results_dir: Path) -> Path | None:
         return None
     source = splats[-1]
     if settings_path.exists() and settings_path.stat().st_mtime_ns >= source.stat().st_mtime_ns:
-        return settings_path
+        try:
+            existing = json.loads(settings_path.read_text(encoding="utf-8"))
+            if existing.get("photogrammetry", {}).get("settingsVersion") == VIEWER_SETTINGS_VERSION:
+                return settings_path
+        except (OSError, ValueError, TypeError):
+            pass
     try:
         payload = viewer_settings_for_ply(source)
     except (OSError, ValueError, OverflowError):

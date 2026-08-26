@@ -645,7 +645,7 @@
     const viewerUrl = `/viewer/index.html?${params}`;
     const viewerKey = `${job.id}:${artifactName}:${artifact.size ?? artifact.bytes ?? ""}:${settings?.name || settings?.id || "fallback"}`;
     elements.splatViewerLabel.textContent = artifactName;
-    elements.viewerFileMeta.textContent = ["Gaussian splat", formatBytes(artifact.size ?? artifact.bytes), settings ? "Bounds-framed" : "Automatic framing"].filter(Boolean).join(" · ");
+    elements.viewerFileMeta.textContent = ["Gaussian splat", formatBytes(artifact.size ?? artifact.bytes), settings ? "Core-framed" : "Automatic framing"].filter(Boolean).join(" · ");
     elements.splatViewerFrame.title = `Interactive Gaussian splat result for ${job.name || job.id}`;
     elements.downloadSplat.href = sourceUrl;
     elements.downloadSplat.download = artifactName;
