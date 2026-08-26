@@ -47,6 +47,12 @@ Mesh jobs run image preparation, COLMAP/GLOMAP, OpenMVS densification,
 Poisson reconstruction, decimation, and texture generation. Splat jobs share
 the COLMAP/GLOMAP stages and then train Brush for 30,000 steps by default.
 
+Completed splat jobs open their highest-numbered PLY checkpoint in an embedded,
+interactive viewer with orbit, zoom, touch, and full-screen controls. The viewer
+is bundled into the Nix package, so rendering does not depend on a public CDN;
+the original checkpoint download links remain available. Rendering is provided
+by SuperSplat Viewer 1.30.2 under the MIT license, shipped at `/viewer/LICENSE`.
+
 ## HTTP API
 
 - `GET /api/v1/health`

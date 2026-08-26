@@ -27,6 +27,11 @@
       url = "github:mkazhdan/PoissonRecon/262b0f539d404057d1f36e1adc07fc9388678899";
       flake = false;
     };
+    supersplatViewerSource = {
+      # Pin the pre-built, self-contained browser viewer used by the server UI.
+      url = "https://registry.npmjs.org/@playcanvas/supersplat-viewer/-/supersplat-viewer-1.30.2.tgz";
+      flake = false;
+    };
   };
 
   outputs =
@@ -37,6 +42,7 @@
       rayintSource,
       mveSource,
       poissonReconSource,
+      supersplatViewerSource,
       ...
     }:
     let
@@ -156,6 +162,7 @@
           rayintSource
           mveSource
           poissonReconSource
+          supersplatViewerSource
           ;
         fastDownscaler = serverPkgs.stdenv.mkDerivation {
           pname = "fast_downscaler";

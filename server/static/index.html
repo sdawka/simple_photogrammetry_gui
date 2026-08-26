@@ -152,6 +152,17 @@
               <div class="preview" id="preview" hidden>
                 <img id="preview-image" alt="Generated result preview">
               </div>
+              <div class="splat-viewer" id="splat-viewer" hidden>
+                <div class="splat-viewer-toolbar">
+                  <div>
+                    <strong id="splat-viewer-label">Interactive splat</strong>
+                    <span>Drag to orbit · scroll or pinch to zoom</span>
+                  </div>
+                  <a class="text-button" id="open-splat-viewer" target="_blank" rel="noopener">Open full screen</a>
+                </div>
+                <iframe id="splat-viewer-frame" title="Interactive Gaussian splat viewer"
+                  allow="fullscreen; xr-spatial-tracking" allowfullscreen></iframe>
+              </div>
               <div class="preview-fallback" id="preview-fallback">
                 <span aria-hidden="true">◈</span>
                 <div>

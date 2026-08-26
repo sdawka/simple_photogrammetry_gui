@@ -12,6 +12,7 @@
   rayintSource,
   mveSource,
   poissonReconSource,
+  supersplatViewerSource,
   fastDownscaler,
 }:
 
@@ -52,6 +53,15 @@ stdenvNoCC.mkDerivation {
       "$out/usr/bin/brush"
 
     cp -R server "$out/lib/photogrammetry-server/server"
+
+    mkdir -p "$out/lib/photogrammetry-server/server/static/viewer"
+    cp \
+      ${supersplatViewerSource}/public/index.html \
+      ${supersplatViewerSource}/public/index.css \
+      ${supersplatViewerSource}/public/index.js \
+      "$out/lib/photogrammetry-server/server/static/viewer/"
+    cp ${supersplatViewerSource}/LICENSE \
+      "$out/lib/photogrammetry-server/server/static/viewer/LICENSE"
 
     ln -s ${lib.getExe colmapPackage} "$out/usr/bin/colmap"
     ln -s ${lib.getExe brush-splat} "$out/usr/bin/brush/brush_app"

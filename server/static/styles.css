@@ -202,6 +202,13 @@ input[type="text"]:focus, select:focus { border-color: var(--aqua-light); box-sh
 
 .preview { overflow: hidden; max-height: 360px; border: 1px solid var(--border); border-radius: 11px; background: #111; }
 .preview img { display: block; width: 100%; max-height: 360px; object-fit: contain; }
+.splat-viewer { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: #111; }
+.splat-viewer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--panel-raised); }
+.splat-viewer-toolbar div { display: grid; gap: 2px; }
+.splat-viewer-toolbar strong { color: var(--muted); font-size: .8rem; }
+.splat-viewer-toolbar span { color: var(--faint); font-size: .68rem; }
+.splat-viewer-toolbar a { flex: none; text-decoration: none; }
+.splat-viewer iframe { display: block; width: 100%; height: clamp(360px, 55vw, 640px); border: 0; background: #111; }
 .preview-fallback { display: flex; gap: 14px; align-items: center; padding: 16px; border: 1px dashed var(--border); border-radius: 10px; color: var(--faint); }
 .preview-fallback > span { color: var(--aqua-light); font-size: 1.7rem; }
 .preview-fallback strong { color: var(--muted); font-size: .85rem; }
@@ -241,6 +248,8 @@ input[type="text"]:focus, select:focus { border-color: var(--aqua-light); box-sh
   .segmented span { font-size: .78rem; }
   .drop-zone { min-height: 140px; padding: 18px; }
   .detail-header { display: grid; }
+  .splat-viewer-toolbar { align-items: flex-start; }
+  .splat-viewer iframe { height: 420px; }
   .artifact-list { grid-template-columns: 1fr; }
   .form-footer { align-items: flex-end; }
 }

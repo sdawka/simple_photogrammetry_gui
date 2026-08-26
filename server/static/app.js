@@ -45,6 +45,10 @@
     artifactList: $("#artifact-list"),
     preview: $("#preview"),
     previewImage: $("#preview-image"),
+    splatViewer: $("#splat-viewer"),
+    splatViewerFrame: $("#splat-viewer-frame"),
+    splatViewerLabel: $("#splat-viewer-label"),
+    openSplatViewer: $("#open-splat-viewer"),
     previewFallback: $("#preview-fallback"),
     jobLogs: $("#job-logs"),
     followLogs: $("#follow-logs"),
@@ -64,6 +68,7 @@
     uploading: false,
     pollTimer: null,
     toastTimer: null,
+    splatViewerFor: null,
   };
 
   function setConnection(online, label) {
@@ -365,6 +370,7 @@
 
   async function selectJob(jobId) {
     if (state.selectedId !== jobId) {
+      clearSplatViewer();
       state.selectedId = jobId;
       state.logsFor = null;
       state.logCursor = 0;
@@ -376,6 +382,7 @@
   }
 
   function showNoSelection() {
+    clearSplatViewer();
     elements.detailPlaceholder.hidden = false;
     elements.detailContent.hidden = true;
     state.selectedJob = null;
@@ -407,6 +414,7 @@
     elements.jobBar.style.width = `${progress === null ? 0 : progress * 100}%`;
     elements.jobPercent.textContent = progress === null ? "—" : `${Math.round(progress * 100)}%`;
     elements.resultSection.hidden = job.state !== "completed";
+    if (job.state !== "completed") clearSplatViewer();
     if (job.error && TERMINAL_STATES.has(job.state)) {
       elements.stageLabel.textContent = `${stageText(job)} · ${job.error}`;
     }
@@ -463,16 +471,67 @@
   async function refreshArtifacts(job) {
     try {
       const payload = await api(`/jobs/${encodeURIComponent(job.id)}/artifacts`);
+      if (job.id !== state.selectedId) return;
       const artifacts = unwrapList(payload, "artifacts");
       renderArtifacts(job, artifacts);
     } catch (_) {
-      elements.artifactList.replaceChildren();
+      if (job.id === state.selectedId) {
+        elements.artifactList.replaceChildren();
+        clearSplatViewer();
+      }
     }
   }
 
+  function splatArtifact(artifacts) {
+    let latest = null;
+    let latestRank = -1;
+    artifacts.forEach((artifact, index) => {
+      const name = artifact.name || artifact.id || "";
+      if (!/\.ply$/i.test(name)) return;
+      const checkpoint = name.match(/(\d+)(?=\.ply$)/i);
+      const rank = checkpoint ? Number(checkpoint[1]) : index;
+      if (!latest || rank >= latestRank) {
+        latest = artifact;
+        latestRank = rank;
+      }
+    });
+    return latest;
+  }
+
+  function clearSplatViewer() {
+    if (state.splatViewerFor !== null) elements.splatViewerFrame.src = "about:blank";
+    state.splatViewerFor = null;
+    elements.splatViewer.hidden = true;
+    elements.openSplatViewer.removeAttribute("href");
+  }
+
+  function renderSplatViewer(job, artifacts) {
+    const artifact = job.kind === "splat" ? splatArtifact(artifacts) : null;
+    if (!artifact) {
+      clearSplatViewer();
+      return false;
+    }
+
+    const artifactName = artifact.name || artifact.id;
+    const sourceUrl = artifactUrl(job.id, artifact);
+    const params = new URLSearchParams({ content: sourceUrl });
+    params.set("nofx", "");
+    const viewerUrl = `/viewer/index.html?${params}`;
+    const viewerKey = `${job.id}:${artifactName}:${artifact.size ?? artifact.bytes ?? ""}`;
+
+    elements.splatViewerLabel.textContent = `Interactive · ${artifactName}`;
+    elements.openSplatViewer.href = viewerUrl;
+    elements.splatViewer.hidden = false;
+    if (state.splatViewerFor !== viewerKey) {
+      state.splatViewerFor = viewerKey;
+      elements.splatViewerFrame.src = viewerUrl;
+    }
+    return true;
+  }
+
   function renderArtifacts(job, artifacts) {
-    const links = artifacts.map((artifact) => {
-      if (typeof artifact === "string") artifact = { name: artifact };
+    const normalizedArtifacts = artifacts.map((artifact) => typeof artifact === "string" ? { name: artifact } : artifact);
+    const links = normalizedArtifacts.map((artifact) => {
       const url = artifactUrl(job.id, artifact);
       const link = document.createElement("a");
       link.className = "artifact";
@@ -491,19 +550,18 @@
     });
     elements.artifactList.replaceChildren(...links);
 
-    const image = artifacts.find((artifact) => {
-      if (typeof artifact === "string") return /\.(png|jpe?g|webp)$/i.test(artifact);
+    const image = normalizedArtifacts.find((artifact) => {
       return artifact.kind === "thumbnail" || String(artifact.mime || "").startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(artifact.name || "");
     });
+    const hasSplatViewer = renderSplatViewer(job, normalizedArtifacts);
     if (image) {
-      const normalized = typeof image === "string" ? { name: image } : image;
-      elements.previewImage.src = artifactUrl(job.id, normalized);
+      elements.previewImage.src = artifactUrl(job.id, image);
       elements.preview.hidden = false;
       elements.previewFallback.hidden = true;
     } else {
       elements.preview.hidden = true;
       elements.previewImage.removeAttribute("src");
-      elements.previewFallback.hidden = false;
+      elements.previewFallback.hidden = hasSplatViewer;
     }
   }
 
