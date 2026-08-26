@@ -39,6 +39,9 @@ def _uint64_header(path: Path) -> int | None:
 def capture_diagnostics(job_dir: Path, uploaded_views: int) -> dict | None:
     """Read the cheap summary fields from a COLMAP binary sparse model."""
     candidates = (
+        # GLOMAP writes numbered models directly under the requested output
+        # directory; older/test COLMAP layouts may include sparse/.
+        job_dir / "work" / "images_scaled" / "0",
         job_dir / "work" / "images_scaled" / "sparse" / "0",
         job_dir / "work" / "sparse" / "0",
     )

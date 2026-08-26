@@ -33,6 +33,20 @@ class ReconstructionMetadataTests(unittest.TestCase):
                 diagnostics,
             )
 
+    def test_capture_diagnostics_support_glomap_output_layout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "work" / "images_scaled" / "0"
+            model.mkdir(parents=True)
+            (model / "images.bin").write_bytes(struct.pack("<Q", 5))
+            (model / "points3D.bin").write_bytes(struct.pack("<Q", 44))
+
+            diagnostics = capture_diagnostics(root, uploaded_views=11)
+
+            self.assertEqual(5, diagnostics["registered_views"])
+            self.assertEqual(44, diagnostics["reliable_tracks"])
+            self.assertEqual("poor", diagnostics["level"])
+
     def test_binary_ply_bounds_generate_framed_settings(self):
         with tempfile.TemporaryDirectory() as temporary:
             results = Path(temporary)
