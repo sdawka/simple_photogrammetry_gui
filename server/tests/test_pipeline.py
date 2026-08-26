@@ -91,10 +91,16 @@ class PipelineTests(unittest.TestCase):
         temporary, pipeline, fake = self.make_pipeline("splat")
         try:
             pipeline.run()
-            brush = next(args for name, args, _ in fake.commands if name == "brush_app")
+            brush, cwd = next(
+                (args, cwd)
+                for name, args, cwd in fake.commands
+                if name == "brush_app"
+            )
             self.assertEqual("--export-path", brush[1])
             self.assertEqual("--total-steps", brush[3])
             self.assertEqual("30000", brush[4])
+            self.assertEqual(pipeline.work, cwd)
+            self.assertNotEqual(pipeline.results, cwd)
         finally:
             temporary.cleanup()
 

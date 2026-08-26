@@ -292,7 +292,10 @@ class Pipeline:
             self.runner.run(
                 self.tools.brush,
                 [images, "--export-path", self.results, "--total-steps", steps],
-                cwd=self.results,
+                # Brush writes its wgpu autotune cache beneath the current
+                # directory. Keep that implementation detail in work/ so the
+                # public results directory contains only downloadable output.
+                cwd=self.work,
             )
             if not any(self.results.rglob("*.ply")):
                 raise PipelineError("Brush completed without exporting a .ply splat")
