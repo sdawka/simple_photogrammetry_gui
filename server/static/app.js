@@ -44,7 +44,7 @@
     files: [], rejectedFiles: [], objectUrls: [], jobs: [], selectedId: null, selectedJob: null, currentView: null,
     logsFor: null, logCursor: 0, logText: "", artifacts: [], artifactsFor: null, artifactsFingerprint: "",
     polling: false, uploading: false, resumeJobId: null, toastTimer: null, splatViewerFor: null, viewerUrl: null,
-    viewerActive: false, viewerReady: false, viewerResetting: false, viewerDocument: null, viewerHandlers: null,
+    viewerActive: false, viewerReady: false, viewerResetting: false, viewerFullscreen: false, viewerDocument: null, viewerHandlers: null,
     previousJobState: null, previousStage: null, initialUrlHadJob: false,
   };
 
@@ -621,6 +621,8 @@
     state.splatViewerFor = null;
     state.viewerUrl = null;
     state.viewerReady = false;
+    state.viewerResetting = false;
+    elements.frameResult.disabled = true;
     elements.splatViewer.hidden = true;
     elements.splatViewerFrame.removeAttribute("src");
     elements.downloadSplat.removeAttribute("href");
@@ -629,6 +631,7 @@
   function ensureViewerLoaded() {
     if (!state.viewerUrl || elements.splatViewerFrame.getAttribute("src")) return;
     state.viewerReady = false;
+    elements.frameResult.disabled = true;
     elements.viewerStatus.textContent = "Loading interactive result";
     elements.splatViewerFrame.src = state.viewerUrl;
   }
@@ -640,10 +643,14 @@
     const sourceUrl = artifactUrl(job.id, artifact);
     const settings = settingsArtifact(artifacts);
     const params = new URLSearchParams({ content: sourceUrl });
-    if (settings) params.set("settings", artifactUrl(job.id, settings));
+    if (settings) {
+      const settingsUrl = artifactUrl(job.id, settings);
+      const settingsVersion = settings.size ?? settings.bytes;
+      params.set("settings", settingsVersion == null ? settingsUrl : `${settingsUrl}${settingsUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(settingsVersion)}`);
+    }
     params.set("nofx", "");
     const viewerUrl = `/viewer/index.html?${params}`;
-    const viewerKey = `${job.id}:${artifactName}:${artifact.size ?? artifact.bytes ?? ""}:${settings?.name || settings?.id || "fallback"}`;
+    const viewerKey = `${job.id}:${artifactName}:${artifact.size ?? artifact.bytes ?? ""}:${settings?.name || settings?.id || "fallback"}:${settings?.size ?? settings?.bytes ?? ""}`;
     elements.splatViewerLabel.textContent = artifactName;
     elements.viewerFileMeta.textContent = ["Gaussian splat", formatBytes(artifact.size ?? artifact.bytes), settings ? "Core-framed" : "Automatic framing"].filter(Boolean).join(" · ");
     elements.splatViewerFrame.title = `Interactive Gaussian splat result for ${job.name || job.id}`;
@@ -657,6 +664,8 @@
       state.splatViewerFor = viewerKey;
       state.viewerUrl = viewerUrl;
       state.viewerReady = false;
+      state.viewerResetting = false;
+      elements.frameResult.disabled = true;
       elements.viewerActivation.hidden = false;
       elements.activateViewer.disabled = false;
       const bytes = Number(artifact.size ?? artifact.bytes);
@@ -717,10 +726,11 @@
   }
 
   function frameResult() {
-    if (!state.viewerUrl) return;
+    if (!state.viewerUrl || !state.viewerReady || state.viewerResetting) return;
     deactivateViewer(false);
     state.viewerResetting = true;
     state.viewerReady = false;
+    elements.frameResult.disabled = true;
     elements.viewerStatus.textContent = "Resetting view";
     try { elements.splatViewerFrame.contentWindow.location.reload(); }
     catch (_) { elements.splatViewerFrame.src = state.viewerUrl; }
@@ -901,10 +911,19 @@
     elements.fullscreenViewer.addEventListener("click", toggleFullscreen);
     elements.splatViewerFrame.addEventListener("load", () => {
       if (!state.viewerUrl || elements.splatViewerFrame.src === "about:blank") return;
+      const wasResetting = state.viewerResetting;
       state.viewerReady = true;
-      installViewerBridge();
-      elements.viewerStatus.textContent = state.viewerResetting ? "View reset · Select Explore in 3D" : "Interactive result ready · Select Explore in 3D";
       state.viewerResetting = false;
+      elements.frameResult.disabled = false;
+      installViewerBridge();
+      if (state.viewerActive) {
+        const canvas = state.viewerDocument?.querySelector("canvas");
+        if (canvas) canvas.focus();
+        else elements.splatViewerFrame.focus();
+        elements.viewerStatus.textContent = "3D viewer active · Press Escape to return to page scrolling";
+      } else {
+        elements.viewerStatus.textContent = wasResetting ? "View reset · Select Explore in 3D" : "Interactive result ready · Select Explore in 3D";
+      }
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && state.viewerActive) { event.preventDefault(); deactivateViewer(true); return; }
@@ -915,7 +934,11 @@
       }
     });
     document.addEventListener("fullscreenchange", () => {
-      elements.fullscreenViewer.textContent = document.fullscreenElement === elements.splatViewer ? "Exit full screen" : "Full screen";
+      const viewerFullscreen = document.fullscreenElement === elements.splatViewer;
+      const exitedViewerFullscreen = state.viewerFullscreen && !viewerFullscreen;
+      state.viewerFullscreen = viewerFullscreen;
+      elements.fullscreenViewer.textContent = viewerFullscreen ? "Exit full screen" : "Full screen";
+      if (exitedViewerFullscreen && state.viewerActive) deactivateViewer(true);
     });
     elements.dismissToast.addEventListener("click", () => { elements.toast.hidden = true; });
     window.addEventListener("popstate", handlePopState);

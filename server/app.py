@@ -317,6 +317,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(size))
+        if path.name == "viewer-settings.json":
+            self.send_header("Cache-Control", "no-store")
         if attachment:
             self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
         self.end_headers()

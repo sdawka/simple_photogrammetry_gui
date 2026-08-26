@@ -26,7 +26,7 @@ PLY_TYPES = {
     "float64": "d",
 }
 
-VIEWER_SETTINGS_VERSION = 4
+VIEWER_SETTINGS_VERSION = 5
 VIEWER_BOUNDS_TRIM_FRACTION = 0.01
 VIEWER_BOUNDS_MAX_SAMPLES = 200_000
 SPARSE_FOCUS_TRIM_FRACTION = 0.05
@@ -195,6 +195,18 @@ def registered_camera_center(job_dir: Path) -> tuple[float, float, float] | None
     return tuple(sum(center[axis] for center in centers) / len(centers) for axis in range(3))
 
 
+def _viewer_coordinates(point: tuple[float, float, float]) -> tuple[float, float, float]:
+    # The pinned SuperSplat viewer rotates imported splats 180 degrees around Z.
+    return -point[0], -point[1], point[2]
+
+
+def _viewer_bounds(
+    minimum: tuple[float, float, float],
+    maximum: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    return (-maximum[0], -maximum[1], minimum[2]), (-minimum[0], -minimum[1], maximum[2])
+
+
 def _read_ply_header(stream: BinaryIO) -> tuple[str, int, list[tuple[str, str]]]:
     first = stream.readline()
     if first.rstrip() != b"ply":
@@ -290,16 +302,18 @@ def ply_bounds(
 
 
 def viewer_settings_for_ply(path: Path, *, job_dir: Path | None = None) -> dict:
-    visible_minimum, visible_maximum = ply_bounds(path, trim_fraction=VIEWER_BOUNDS_TRIM_FRACTION)
+    source_visible_bounds = ply_bounds(path, trim_fraction=VIEWER_BOUNDS_TRIM_FRACTION)
+    visible_minimum, visible_maximum = _viewer_bounds(*source_visible_bounds)
     focus = sparse_subject_bounds(job_dir) if job_dir is not None else None
-    minimum, maximum = focus or (visible_minimum, visible_maximum)
+    minimum, maximum = _viewer_bounds(*focus) if focus else (visible_minimum, visible_maximum)
     target = [(low + high) / 2 for low, high in zip(minimum, maximum)]
     half_diagonal = math.sqrt(sum(((high - low) / 2) ** 2 for low, high in zip(minimum, maximum)))
     radius = max(half_diagonal, 0.01)
     fov = 55
     padding = 1.35 if focus else 1.12
     distance = radius / math.sin(math.radians(fov / 2)) * padding
-    camera_center = registered_camera_center(job_dir) if job_dir is not None else None
+    source_camera_center = registered_camera_center(job_dir) if job_dir is not None else None
+    camera_center = _viewer_coordinates(source_camera_center) if source_camera_center is not None else None
     if camera_center is not None:
         direction = [camera_center[axis] - target[axis] for axis in range(3)]
         direction_length = math.sqrt(sum(value * value for value in direction))

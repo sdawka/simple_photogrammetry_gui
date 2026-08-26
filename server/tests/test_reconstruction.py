@@ -69,11 +69,11 @@ class ReconstructionMetadataTests(unittest.TestCase):
             self.assertIsNotNone(settings_path)
             settings = json.loads(settings_path.read_text())
             camera = settings["cameras"][0]["initial"]
-            self.assertEqual([0.0, 3.0, 3.0], camera["target"])
+            self.assertEqual([0.0, -3.0, 3.0], camera["target"])
             self.assertEqual(55, camera["fov"])
             self.assertLess(camera["position"][2], -5)
             self.assertEqual("robust_bounds", settings["photogrammetry"]["framing"])
-            self.assertEqual(4, settings["photogrammetry"]["settingsVersion"])
+            self.assertEqual(5, settings["photogrammetry"]["settingsVersion"])
 
     def test_ascii_ply_bounds(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -118,7 +118,7 @@ class ReconstructionMetadataTests(unittest.TestCase):
             ensure_viewer_settings(results)
 
             regenerated = json.loads(settings.read_text())
-            self.assertEqual(4, regenerated["photogrammetry"]["settingsVersion"])
+            self.assertEqual(5, regenerated["photogrammetry"]["settingsVersion"])
 
     def test_sparse_tracks_focus_viewer_on_matched_subject(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -166,10 +166,10 @@ class ReconstructionMetadataTests(unittest.TestCase):
             self.assertEqual("sparse_subject", settings["photogrammetry"]["framing"])
             self.assertEqual("registered_cameras", settings["photogrammetry"]["viewDirection"])
             target = settings["cameras"][0]["initial"]["target"]
-            self.assertGreater(target[0], 4.0)
-            self.assertLess(target[0], 7.0)
+            self.assertGreater(target[0], -7.0)
+            self.assertLess(target[0], -4.0)
             position = settings["cameras"][0]["initial"]["position"]
-            self.assertLess(position[0], target[0])
+            self.assertGreater(position[0], target[0])
             self.assertLess(position[2], target[2])
 
 
