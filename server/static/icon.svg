@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Faceted photogrammetry model">
+  <rect width="256" height="256" rx="48" fill="#282828"/>
+  <g fill="#d5d1c7" stroke="#928374" stroke-width="3" stroke-linejoin="round">
+    <path d="M28 49 81 34l39 34-9 53-57 8-31-34z"/>
+    <path d="m120 68 69-14 40 43-12 94-64 35-46-50 4-55z"/>
+    <path d="m44 151 42-18 34 32-10 45-48 9-29-30z"/>
+  </g>
+  <g fill="none" stroke="#665c54" stroke-width="3">
+    <path d="m28 49 45 35 47-16M73 84l-19 45m19-45 38 37M120 68l45 64 64-35m-64 35-12 94m12-94 52 59M107 176l58-44M44 151l44 37 32-23m-32 23-26 31"/>
+  </g>
+  <circle cx="165" cy="132" r="6" fill="#458588"/>
+</svg>

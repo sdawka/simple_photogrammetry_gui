@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#282828">
+    <meta name="description" content="Run photogrammetry and Gaussian splat jobs on servOS.">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <title>Photogrammetry · servOS</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Photogrammetry home">
+        <img src="/icon.svg" width="44" height="44" alt="">
+        <span>
+          <strong>Photogrammetry</strong>
+          <small>servOS GPU workspace</small>
+        </span>
+      </a>
+      <div class="connection" id="connection" data-state="checking" role="status">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span id="connection-label">Connecting</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel create-panel" aria-labelledby="new-job-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">New reconstruction</p>
+            <h1 id="new-job-title">Turn photos into a 3D result</h1>
+          </div>
+          <button class="button button-quiet" id="toggle-create" type="button" aria-expanded="true">
+            Hide setup
+          </button>
+        </div>
+
+        <form id="job-form">
+          <div class="setup-grid">
+            <label class="field">
+              <span>Job name</span>
+              <input id="job-name" name="name" type="text" maxlength="80" autocomplete="off"
+                placeholder="Kitchen sculpture" required>
+            </label>
+
+            <fieldset class="field">
+              <legend>Output</legend>
+              <div class="segmented" id="kind-picker">
+                <label>
+                  <input type="radio" name="kind" value="mesh" checked>
+                  <span>Textured mesh</span>
+                </label>
+                <label>
+                  <input type="radio" name="kind" value="splat">
+                  <span>Gaussian splat</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label class="field" id="quality-field">
+              <span>Mesh quality</span>
+              <select id="quality" name="quality">
+                <option value="low">Low · fastest</option>
+                <option value="medium" selected>Medium · recommended</option>
+                <option value="high">High · most detail</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="drop-zone" id="drop-zone" tabindex="0" role="button"
+            aria-controls="photo-input" aria-describedby="photo-guidance">
+            <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple hidden>
+            <span class="drop-icon" aria-hidden="true">＋</span>
+            <strong id="drop-title">Choose photos or drop them here</strong>
+            <span id="photo-guidance">JPG or PNG · at least 3 photos · 20+ gives better coverage</span>
+          </div>
+
+          <div class="file-summary" id="file-summary" hidden>
+            <div>
+              <strong id="file-count"></strong>
+              <span id="file-size"></span>
+            </div>
+            <button class="text-button" id="clear-files" type="button">Clear</button>
+          </div>
+          <ul class="file-list" id="file-list" aria-label="Selected photos"></ul>
+
+          <div class="upload-progress" id="upload-progress" hidden aria-live="polite">
+            <div class="progress-copy">
+              <strong id="upload-label">Preparing upload…</strong>
+              <span id="upload-percent">0%</span>
+            </div>
+            <div class="progress-track"><span id="upload-bar"></span></div>
+          </div>
+
+          <div class="form-footer">
+            <p class="form-message" id="form-message" role="alert"></p>
+            <button class="button button-primary" id="submit-job" type="submit">Create job</button>
+          </div>
+        </form>
+      </section>
+
+      <div class="workspace">
+        <section class="panel jobs-panel" aria-labelledby="jobs-title">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Server queue</p>
+              <h2 id="jobs-title">Jobs</h2>
+            </div>
+            <button class="icon-button" id="refresh-jobs" type="button" title="Refresh jobs" aria-label="Refresh jobs">↻</button>
+          </div>
+          <div class="jobs-list" id="jobs-list"></div>
+          <div class="empty-state" id="jobs-empty">
+            <span aria-hidden="true">◇</span>
+            <strong>No jobs yet</strong>
+            <p>Add a photo set above to begin.</p>
+          </div>
+        </section>
+
+        <section class="panel detail-panel" id="detail-panel" aria-labelledby="detail-title">
+          <div class="detail-placeholder" id="detail-placeholder">
+            <span aria-hidden="true">⬡</span>
+            <h2 id="detail-title">Select a job</h2>
+            <p>Progress, logs, and finished artifacts will appear here.</p>
+          </div>
+
+          <div id="detail-content" hidden>
+            <div class="detail-header">
+              <div>
+                <div class="detail-title-line">
+                  <h2 id="detail-name"></h2>
+                  <span class="status-badge" id="detail-status"></span>
+                </div>
+                <p class="detail-meta" id="detail-meta"></p>
+              </div>
+              <button class="button button-danger" id="cancel-job" type="button" hidden>Cancel job</button>
+            </div>
+
+            <div class="stage-card">
+              <div class="progress-copy">
+                <strong id="stage-label">Waiting</strong>
+                <span id="job-percent">—</span>
+              </div>
+              <div class="progress-track"><span id="job-bar"></span></div>
+            </div>
+
+            <section class="result-section" id="result-section" hidden aria-labelledby="result-title">
+              <div class="subheading">
+                <h3 id="result-title">Results</h3>
+                <span>Stored on the server</span>
+              </div>
+              <div class="preview" id="preview" hidden>
+                <img id="preview-image" alt="Generated result preview">
+              </div>
+              <div class="preview-fallback" id="preview-fallback">
+                <span aria-hidden="true">◈</span>
+                <div>
+                  <strong>Download to view in 3D</strong>
+                  <p>Interactive browser rendering is an optional enhancement; original output files remain available below.</p>
+                </div>
+              </div>
+              <div class="artifact-list" id="artifact-list"></div>
+            </section>
+
+            <section class="logs-section" aria-labelledby="logs-title">
+              <div class="subheading">
+                <h3 id="logs-title">Live log</h3>
+                <div>
+                  <label class="follow-label"><input id="follow-logs" type="checkbox" checked> Follow</label>
+                  <button class="text-button" id="copy-logs" type="button">Copy</button>
+                </div>
+              </div>
+              <pre id="job-logs" tabindex="0">Waiting for log output…</pre>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

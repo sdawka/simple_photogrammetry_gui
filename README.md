@@ -1,5 +1,9 @@
 # simple_photogrammetry_gui
 
+The project also includes a native headless service and custom browser UI for
+running persistent mesh and Gaussian-splat jobs on a Linux GPU server. See
+[docs/server.md](docs/server.md) for its package, API, and servOS access model.
+
 ## Usage:
 
 Windows Users: You will be prompted to download missing dependencies, click **Install (Cuda)** if you have an Nvidia GPU, and if not, click **Install (No Cuda)**.

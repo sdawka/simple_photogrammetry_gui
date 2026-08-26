@@ -45,15 +45,22 @@
       system = "x86_64-linux";
 
       # These are the NVIDIA GPU generations supported by the existing Linux
-      # build, plus compute capability 12.0 for current Blackwell GPUs. Limiting
-      # the list keeps the CUDA build smaller than compiling for every GPU that
+      # build. Compute capability 6.1 keeps the GTX 1060/Pascal service target
+      # viable on CUDA 12.9; 12.0 covers current Blackwell GPUs. Limiting the
+      # list keeps the CUDA build smaller than compiling for every GPU that
       # CUDA 12.9 supports.
       cudaCapabilities = [
+        "6.1"
         "7.5"
         "8.6"
         "8.9"
         "12.0"
       ];
+
+      # The home-server package is intentionally specialized for its GTX 1060.
+      # Avoiding the desktop package's multi-generation CUDA matrix keeps native
+      # service builds substantially smaller and faster.
+      serverCudaCapabilities = [ "6.1" ];
 
       # Select the package collection for that platform. NVIDIA distributes the
       # CUDA toolkit under its own license, which nixpkgs classifies as unfree.
@@ -67,8 +74,20 @@
         };
       };
 
+      serverPkgs = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          cudaCapabilities = serverCudaCapabilities;
+        };
+      };
+
       openmvsCuda = pkgs.callPackage ./nix/openmvs-cuda.nix {
         inherit cudaCapabilities;
+      };
+
+      serverOpenmvsCuda = serverPkgs.callPackage ./nix/openmvs-cuda.nix {
+        cudaCapabilities = serverCudaCapabilities;
       };
 
       # Add fast_downscaler - a simple tool built in CPP that scales down the images,
@@ -127,6 +146,28 @@
         openmvsPackage = pkgs.openmvs;
       };
 
+      serverPackage = serverPkgs.callPackage ./nix/server-package.nix {
+        colmapPackage = serverPkgs.colmapWithCuda;
+        openmvsPackage = serverOpenmvsCuda;
+        inherit
+          mvsTexturingSource
+          mapmapSource
+          rayintSource
+          mveSource
+          poissonReconSource
+          ;
+        fastDownscaler = serverPkgs.stdenv.mkDerivation {
+          pname = "fast_downscaler";
+          version = "1.0.0";
+          src = ./CPP/ImageDownscaler;
+          nativeBuildInputs = [ serverPkgs.cmake ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp fast_downscaler $out/bin/
+          '';
+        };
+      };
+
       # Building both variants would not catch a launcher wired to the wrong
       # application mode. It would also miss a CPU OpenMVS package that gained
       # a driver dependency. Check both distribution boundaries explicitly.
@@ -160,6 +201,7 @@
         default = cudaPackage;
         cuda = cudaPackage;
         cpu = cpuPackage;
+        server-cuda-sm61 = serverPackage;
       };
 
       # `nix flake check` builds both distributions, including their distinct
@@ -167,6 +209,7 @@
       checks.${system} = {
         cuda = cudaPackage;
         cpu = cpuPackage;
+        server-cuda-sm61 = serverPackage;
         variant-policy = variantPolicyCheck;
       };
 

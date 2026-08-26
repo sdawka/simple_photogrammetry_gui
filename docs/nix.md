@@ -37,6 +37,9 @@ versions.
   mode that corresponds to those programs. The extra directory layout exists
   because the application was written to find them inside an AppImage-style
   directory.
+- [`nix/server-package.nix`](../nix/server-package.nix) assembles the same
+  native tools with the headless API and browser UI, without building Flutter.
+  Its CUDA inputs target only compute capability 6.1 for the servOS GTX 1060.
 - [`nix/openmvs-cuda.nix`](../nix/openmvs-cuda.nix) adds CUDA to nixpkgs'
   OpenMVS package. Nixpkgs already supplies a CUDA variant of COLMAP, but its
   OpenMVS package has no equivalent switch.
@@ -50,9 +53,9 @@ versions.
   shell as `nix develop`. The generated `.direnv` directory is ignored because
   it contains machine-local cache files and Nix store links.
 
-## CPU and CUDA packages
+## Desktop and server packages
 
-The flake exposes two complete packages:
+The flake exposes two desktop packages and one headless server package:
 
 - `.#cuda` uses CUDA-enabled builds of COLMAP and OpenMVS. Its launcher sets
   `SIMPLE_PHOTOGRAMMETRY_GPU_TYPE=cuda`, so the application initially enables
@@ -60,6 +63,9 @@ The flake exposes two complete packages:
 - `.#cpu` uses CPU-only builds of COLMAP and OpenMVS. Its launcher sets
   `SIMPLE_PHOTOGRAMMETRY_GPU_TYPE=cpu`, so the application keeps those options
   disabled and warns before starting Gaussian splatting.
+- `.#server-cuda-sm61` builds the headless web/worker service and CUDA tools
+  only for the GTX 1060. It is the package consumed by servOS and does not
+  include the Flutter desktop application.
 
 The default package is `.#cuda`. Named outputs are preferable in instructions
 because they make the hardware choice visible.
@@ -81,9 +87,10 @@ NVIDIA GPU.
 
 NVIDIA assigns each GPU generation a *compute capability*. The list in
 `flake.nix` tells the CUDA compiler which generations to include in the
-programs. Capabilities 7.5, 8.6, and 8.9 match the existing Linux build; 12.0
-supports current Blackwell GPUs. Adding a capability supports another GPU
-generation but makes compilation take longer and produces larger binaries.
+programs. Capability 6.1 supports the GTX 1060/Pascal service target; 7.5,
+8.6, and 8.9 cover the other existing Linux targets; and 12.0 supports current
+Blackwell GPUs. Adding a capability supports another GPU generation but makes
+compilation take longer and produces larger binaries.
 
 Nixpkgs marks the CUDA toolkit as unfree because NVIDIA distributes it under
 the CUDA license rather than an open-source license. `flake.nix` opts into
