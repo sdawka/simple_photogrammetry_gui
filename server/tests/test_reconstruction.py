@@ -8,6 +8,7 @@ from server.reconstruction import (
     capture_diagnostics,
     ensure_viewer_settings,
     ply_bounds,
+    sparse_subject_bounds,
 )
 
 
@@ -72,7 +73,7 @@ class ReconstructionMetadataTests(unittest.TestCase):
             self.assertEqual(55, camera["fov"])
             self.assertLess(camera["position"][2], -5)
             self.assertEqual("robust_bounds", settings["photogrammetry"]["framing"])
-            self.assertEqual(2, settings["photogrammetry"]["settingsVersion"])
+            self.assertEqual(3, settings["photogrammetry"]["settingsVersion"])
 
     def test_ascii_ply_bounds(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -117,7 +118,49 @@ class ReconstructionMetadataTests(unittest.TestCase):
             ensure_viewer_settings(results)
 
             regenerated = json.loads(settings.read_text())
-            self.assertEqual(2, regenerated["photogrammetry"]["settingsVersion"])
+            self.assertEqual(3, regenerated["photogrammetry"]["settingsVersion"])
+
+    def test_sparse_tracks_focus_viewer_on_matched_subject(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "work" / "images_scaled" / "0"
+            results = root / "results"
+            model.mkdir(parents=True)
+            results.mkdir()
+            points = [
+                (-100.0, -100.0, -100.0),
+                (-90.0, -90.0, -90.0),
+                (90.0, 90.0, 90.0),
+                (100.0, 100.0, 100.0),
+            ]
+            points.extend(
+                (4.0 + (index % 4), -3.0 + (index % 5), 7.0 + (index % 3) * 0.5)
+                for index in range(40)
+            )
+            data = [struct.pack("<Q", len(points))]
+            for point_id, (x, y, z) in enumerate(points, start=1):
+                data.append(struct.pack("<QdddBBBdQ", point_id, x, y, z, 0, 0, 0, 0.1, 0))
+            (model / "points3D.bin").write_bytes(b"".join(data))
+            splat = results / "final.ply"
+            splat.write_text(
+                "ply\nformat ascii 1.0\nelement vertex 2\n"
+                "property float x\nproperty float y\nproperty float z\nend_header\n"
+                "-50 -50 -50\n50 50 50\n"
+            )
+
+            focus = sparse_subject_bounds(root)
+            self.assertIsNotNone(focus)
+            self.assertGreater(focus[0][0], 3.0)
+            self.assertLess(focus[1][0], 8.0)
+            self.assertGreater(focus[0][2], 6.0)
+            self.assertLess(focus[1][2], 10.0)
+            ensure_viewer_settings(results)
+            settings = json.loads((results / "viewer-settings.json").read_text())
+
+            self.assertEqual("sparse_subject", settings["photogrammetry"]["framing"])
+            target = settings["cameras"][0]["initial"]["target"]
+            self.assertGreater(target[0], 4.0)
+            self.assertLess(target[0], 7.0)
 
 
 if __name__ == "__main__":

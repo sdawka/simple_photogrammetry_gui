@@ -203,7 +203,7 @@ Do not add fake `Orbit` or `Pan` mode buttons unless the pinned viewer exposes a
 ### Camera framing contract
 
 - The worker emits a per-job `viewer-settings.json` next to a splat artifact.
-- Calculate robust splat bounds from the 1st through 99th position percentiles, target that AABB center, and choose a camera distance that contains the bounding sphere at 55 degrees FOV with 12% padding. Record the trim fraction in the settings artifact. This intentionally excludes sparse, distant Gaussian floaters that would otherwise make the useful reconstruction appear tiny.
+- Prefer the 5th through 95th percentile bounds of triangulated COLMAP sparse tracks as the subject focus, because they represent geometry actually shared across registered views. Frame that AABB at 55 degrees FOV with 35% padding. When sparse tracks are unavailable, fall back to the 1st through 99th splat-position percentiles with 12% padding. Record the method and trim fraction in the settings artifact. This excludes distant Gaussian floaters and avoids centering a neutral background instead of the matched subject.
 - If bounds cannot be read, use the viewer's object framing default and record `framing: automatic` in result metadata.
 - `Frame result` reloads the camera pose without refetching the PLY when the viewer API permits. If the pinned static viewer does not expose this command, reload the viewer document with the same content and settings URLs. Preserve a visible `Resetting view` state during reload.
 - Never hard-code `[0, 1, -3]` for every result.

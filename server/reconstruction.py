@@ -26,9 +26,11 @@ PLY_TYPES = {
     "float64": "d",
 }
 
-VIEWER_SETTINGS_VERSION = 2
+VIEWER_SETTINGS_VERSION = 3
 VIEWER_BOUNDS_TRIM_FRACTION = 0.01
 VIEWER_BOUNDS_MAX_SAMPLES = 200_000
+SPARSE_FOCUS_TRIM_FRACTION = 0.05
+POINT3D_RECORD = struct.Struct("<QdddBBBdQ")
 
 
 def _uint64_header(path: Path) -> int | None:
@@ -40,8 +42,7 @@ def _uint64_header(path: Path) -> int | None:
         return None
 
 
-def capture_diagnostics(job_dir: Path, uploaded_views: int) -> dict | None:
-    """Read the cheap summary fields from a COLMAP binary sparse model."""
+def _sparse_model_dir(job_dir: Path) -> Path | None:
     candidates = (
         # GLOMAP writes numbered models directly under the requested output
         # directory; older/test COLMAP layouts may include sparse/.
@@ -49,7 +50,12 @@ def capture_diagnostics(job_dir: Path, uploaded_views: int) -> dict | None:
         job_dir / "work" / "images_scaled" / "sparse" / "0",
         job_dir / "work" / "sparse" / "0",
     )
-    model = next((path for path in candidates if path.is_dir()), None)
+    return next((path for path in candidates if path.is_dir()), None)
+
+
+def capture_diagnostics(job_dir: Path, uploaded_views: int) -> dict | None:
+    """Read the cheap summary fields from a COLMAP binary sparse model."""
+    model = _sparse_model_dir(job_dir)
     if model is None:
         return None
     registered = _uint64_header(model / "images.bin")
@@ -79,6 +85,54 @@ def capture_diagnostics(job_dir: Path, uploaded_views: int) -> dict | None:
         "level": level,
         "notes": notes,
     }
+
+
+def _trimmed_axis_bounds(values: list[float], trim_fraction: float) -> tuple[float, float]:
+    values.sort()
+    last = len(values) - 1
+    low = math.floor(last * trim_fraction)
+    high = math.ceil(last * (1 - trim_fraction))
+    return values[low], values[high]
+
+
+def sparse_subject_bounds(
+    job_dir: Path,
+    *,
+    trim_fraction: float = SPARSE_FOCUS_TRIM_FRACTION,
+    max_samples: int = VIEWER_BOUNDS_MAX_SAMPLES,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]] | None:
+    """Use triangulated feature tracks as a camera-focus proxy for the subject."""
+    model = _sparse_model_dir(job_dir)
+    if model is None:
+        return None
+    path = model / "points3D.bin"
+    try:
+        with path.open("rb") as stream:
+            count_data = stream.read(8)
+            if len(count_data) != 8:
+                return None
+            count = struct.unpack("<Q", count_data)[0]
+            sample_every = max(1, math.ceil(count / max_samples))
+            axes: list[list[float]] = [[], [], []]
+            for point_index in range(count):
+                data = stream.read(POINT3D_RECORD.size)
+                if len(data) != POINT3D_RECORD.size:
+                    return None
+                record = POINT3D_RECORD.unpack(data)
+                position = record[1:4]
+                track_length = record[-1]
+                if track_length > 10_000_000:
+                    return None
+                stream.seek(track_length * 8, 1)
+                if point_index % sample_every == 0 and all(math.isfinite(value) for value in position):
+                    for axis, value in enumerate(position):
+                        axes[axis].append(float(value))
+    except OSError:
+        return None
+    if len(axes[0]) < 8:
+        return None
+    bounds = [_trimmed_axis_bounds(axis, trim_fraction) for axis in axes]
+    return tuple(item[0] for item in bounds), tuple(item[1] for item in bounds)
 
 
 def _read_ply_header(stream: BinaryIO) -> tuple[str, int, list[tuple[str, str]]]:
@@ -171,22 +225,20 @@ def ply_bounds(
         raise ValueError("PLY has no finite positioned vertices")
     if trim_fraction and len(samples[0]) >= 100:
         for axis in range(3):
-            samples[axis].sort()
-            last = len(samples[axis]) - 1
-            low = math.floor(last * trim_fraction)
-            high = math.ceil(last * (1 - trim_fraction))
-            minimum[axis] = samples[axis][low]
-            maximum[axis] = samples[axis][high]
+            minimum[axis], maximum[axis] = _trimmed_axis_bounds(samples[axis], trim_fraction)
     return tuple(minimum), tuple(maximum)
 
 
-def viewer_settings_for_ply(path: Path) -> dict:
-    minimum, maximum = ply_bounds(path, trim_fraction=VIEWER_BOUNDS_TRIM_FRACTION)
+def viewer_settings_for_ply(path: Path, *, job_dir: Path | None = None) -> dict:
+    visible_minimum, visible_maximum = ply_bounds(path, trim_fraction=VIEWER_BOUNDS_TRIM_FRACTION)
+    focus = sparse_subject_bounds(job_dir) if job_dir is not None else None
+    minimum, maximum = focus or (visible_minimum, visible_maximum)
     target = [(low + high) / 2 for low, high in zip(minimum, maximum)]
     half_diagonal = math.sqrt(sum(((high - low) / 2) ** 2 for low, high in zip(minimum, maximum)))
     radius = max(half_diagonal, 0.01)
     fov = 55
-    distance = radius / math.sin(math.radians(fov / 2)) * 1.12
+    padding = 1.35 if focus else 1.12
+    distance = radius / math.sin(math.radians(fov / 2)) * padding
     position = [target[0], target[1], target[2] - distance]
     return {
         "version": 2,
@@ -212,9 +264,10 @@ def viewer_settings_for_ply(path: Path) -> dict:
         "startMode": "default",
         "photogrammetry": {
             "settingsVersion": VIEWER_SETTINGS_VERSION,
-            "framing": "robust_bounds",
-            "trimFraction": VIEWER_BOUNDS_TRIM_FRACTION,
+            "framing": "sparse_subject" if focus else "robust_bounds",
+            "trimFraction": SPARSE_FOCUS_TRIM_FRACTION if focus else VIEWER_BOUNDS_TRIM_FRACTION,
             "bounds": {"minimum": list(minimum), "maximum": list(maximum)},
+            "visibleBounds": {"minimum": list(visible_minimum), "maximum": list(visible_maximum)},
         },
     }
 
@@ -236,7 +289,7 @@ def ensure_viewer_settings(results_dir: Path) -> Path | None:
         except (OSError, ValueError, TypeError):
             pass
     try:
-        payload = viewer_settings_for_ply(source)
+        payload = viewer_settings_for_ply(source, job_dir=results_dir.parent)
     except (OSError, ValueError, OverflowError):
         return None
     temporary = settings_path.with_suffix(".json.tmp")
