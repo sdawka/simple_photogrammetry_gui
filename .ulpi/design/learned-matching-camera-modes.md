@@ -1,5 +1,5 @@
 ---
-feature: learned photo matching and viewer camera modes
+feature: learned photo matching and viewer camera control
 status: locked for implementation
 binds_to: .ulpi/design/DESIGN.md
 target_agent: frontend-engineering
@@ -7,7 +7,7 @@ design_system: Primer CSS + Octicons
 delivery: offline static SPA served by the existing Python service
 ---
 
-# Learned Matching and Camera Modes
+# Learned Matching and Viewer Camera Control
 
 Every screen must read as the same product if placed side by side.
 
@@ -15,16 +15,16 @@ Read `.ulpi/design/DESIGN.md` and `.ulpi/design/photogrammetry-workspace.md` bef
 
 ## Design Read
 
-Expose two expert choices as plainly labeled instrument controls: one capture-processing decision before a job starts and one camera-state decision while inspecting a result.
+Expose the matching choice as a plainly labeled instrument control, then make splat inspection a single, understandable interaction rather than a mode choice.
 
-The committed aesthetic remains **industrial / signage**. Matching method is presented as a reconstruction instrument setting, while camera mode is a two-position viewport control. Neither becomes a decorative card, novelty toggle, or generic settings screen.
+The committed aesthetic remains **industrial / signage**. Matching method is presented as a reconstruction instrument setting, while the camera uses direct actions for exploration, input release, and reset. Neither becomes a decorative card, novelty toggle, or generic settings screen.
 
 ## Goals
 
 1. Let the operator choose learned matching when standard SIFT leaves related photos unregistered.
 2. Explain the time and hardware tradeoff before upload without requiring knowledge of ALIKED or LightGlue.
-3. Let the operator switch in one action between the generated fixed point of view and a freely movable orbit/pan camera.
-4. Preserve explicit viewer scroll ownership, keyboard escape, generated camera framing, and offline operation.
+3. Let the operator freely orbit and pan from the generated starting angle without choosing a camera mode.
+4. Preserve explicit viewer scroll ownership, keyboard escape, an intentional reset action, generated camera framing, and offline operation.
 
 ## Flow 1: Choose a Matching Method
 
@@ -68,73 +68,74 @@ Add one `Matching` fieldset after `Output` and before `Quality`.
 - Selection is expressed by checked state and text, not color.
 - Touch targets remain at least 48px below `md` and 40px on pointer layouts.
 
-## Flow 2: Switch Viewer Camera Mode
+## Flow 2: Explore the Splat
 
-**Goal:** compare a stable authored view with free inspection without wondering whether the camera is stuck.
+**Goal:** inspect the splat freely while keeping page scrolling and camera reset predictable.
 
 ```text
 [Completed splat opens at generated POV]
-    -> {Fixed view | Free camera}
-       Fixed view -> [No camera gestures; page scroll owns wheel]
-       Free camera -> [Focus canvas; orbit, pan, and zoom]
-       Free camera -> Fixed view -> [Restore generated POV and page scroll]
+    -> [Explore in 3D]
+    -> [Focus canvas; orbit, pan, and zoom]
+    -> Escape or Exit viewer -> [Release input; preserve camera position]
+    -> Reset camera -> [Return to generated POV]
 ```
 
-### Camera mode control
+### Camera actions
 
-Place a labeled two-option segmented radio group in the Calibrated Viewport toolbar, before `Controls` and `Full screen`:
+Place `Reset camera` in the Calibrated Viewport toolbar before `Controls` and `Full screen`. It is an ordinary action, not a mode:
 
-- `Fixed view`: default on initial load and after selecting another job. Restores the generated camera position and target from `viewer-settings.json`, disables orbit/pan/zoom input, and leaves wheel gestures with the page.
-- `Free camera`: activates the same-origin canvas, focuses it, and enables orbit, pan, and zoom. The existing accent viewport boundary and `Exit viewer` control appear.
+- The first rendered frame uses the generated camera position and target from `viewer-settings.json`.
+- `Explore in 3D` activates the same-origin canvas, focuses it, and enables orbit, pan, and zoom. The existing accent viewport boundary and `Exit viewer` control appear.
+- `Escape` and `Exit viewer` release pointer and wheel ownership to the page without reloading the viewer or changing its camera position. Reactivating resumes from the same position.
+- `Reset camera` reloads only the viewer document with the same PLY and settings URLs. If the viewer was active, interaction resumes after the first reset frame; otherwise page scrolling remains in control.
 
-The visible group label is `Camera`. Use Primer segmented-control semantics if bundled; otherwise use the existing radio-control vocabulary and locked tokens. Do not draw an iOS-style sliding switch.
+There is no persistent camera-mode selector. The generated POV is only a starting angle, not a locked viewing mode.
 
-Selecting `Fixed view` while free:
+Resetting the camera:
 
 1. releases viewer scroll ownership;
-2. restores the generated POV by reloading only the viewer document with the same PLY and settings URLs;
-3. shows `Restoring fixed view` until ready;
-4. returns focus to the selected `Fixed view` control;
-5. announces `Fixed view restored. Page scrolling available.`
+2. reloads only the viewer document with the same PLY and settings URLs;
+3. shows `Resetting camera` until ready;
+4. restores the prior input-ownership state;
+5. announces that the camera reset completed.
 
-Selecting `Free camera`:
+Activating the viewer:
 
 1. ensures the iframe is loaded;
 2. focuses its canvas;
 3. enables pointer and wheel input;
-4. announces `Free camera active. Press Escape to return to fixed view.`
+4. announces `Interactive viewer active. Press Escape to return to page scrolling.`
 
-`Escape` always selects Fixed view, restores the generated POV, releases scroll ownership, and returns focus to the `Fixed view` control. The persistent active-viewer action reads `Use fixed view`, replacing `Exit viewer` so the destination is explicit.
+`Escape` only releases viewer input, preserves the current camera position, and returns focus to `Explore in 3D`. The persistent active-viewer action reads `Exit viewer`.
 
 ### Viewer chrome changes
 
-- Remove the separate `Frame result` toolbar action; Fixed view is the framing/reset action.
-- Keep `Controls` and `Full screen`.
-- In Fixed view, the center scrim is quiet and reads `Fixed viewpoint` with a secondary `Use free camera` action. Its instruction line reads `Switch to Free camera to orbit, pan, and zoom.`
-- In Free camera, the scrim is absent. The existing corner registration marks use `accent` and the cursor uses `grab`/`grabbing`.
-- Help copy begins with the current mode. Fixed: `Camera movement is locked to the generated capture view.` Free: retain mouse, trackpad, touch, and Escape instructions.
-- Full screen preserves the selected mode. Exiting browser full screen returns to Fixed view to avoid a hidden scroll trap.
+- Keep `Reset camera`, `Controls`, and `Full screen` as the only viewer toolbar actions.
+- Before activation, the center scrim reads `Interactive camera` with an `Explore in 3D` action and concise gesture guidance.
+- During interaction, the scrim is absent. The existing corner registration marks use `accent` and the cursor uses `grab`/`grabbing`.
+- Help copy explains mouse, trackpad, touch, and that Escape releases input without moving the camera.
+- Exiting browser full screen releases viewer input to avoid a hidden scroll trap without resetting the camera.
 
-### Camera-mode states
+### Viewer camera states
 
-| State | Fixed view | Free camera |
+| State | Presentation | Behavior |
 |---|---|---|
-| Loading | selected and disabled; `Loading fixed view` | disabled |
-| Ready | selected; rendered frame visible; page owns scroll | available |
-| Activating | available | selected and disabled until canvas focus succeeds |
-| Active | available | selected; canvas owns pointer/wheel; `Use fixed view` visible |
-| Restoring | selected and disabled; `Restoring fixed view` | disabled |
-| Renderer unsupported | selected; fixed poster if available | disabled with reason in status line |
-| Offline after load | remains rendered | current interaction remains usable; switching Fixed uses cached same-origin assets |
-| Job/artifact change | selected and loading the new generated POV | cleared |
+| Loading | `Loading interactive result`; actions disabled | page owns scroll |
+| Ready | generated starting angle; `Explore in 3D` visible | page owns scroll |
+| Active | accent boundary; `Exit viewer` visible | canvas owns pointer and wheel |
+| Released | activation scrim returns over the current camera position | page owns scroll; reactivation resumes position |
+| Resetting | `Resetting camera`; reset and activation disabled | viewer reloads generated POV |
+| Renderer unsupported | failure reason and enabled Reset action | direct download remains available |
+| Offline after load | rendered frame and current interaction remain usable | reset uses cached same-origin assets |
+| Job/artifact change | new generated POV loads | previous input state is cleared |
 
 ### Accessibility and responsive behavior
 
-- Implement the two choices as radios, not `aria-pressed` buttons. Group label: `Camera mode`.
-- Arrow keys switch radio selection; Space selects the focused option. Do not require pointer input.
+- Use native buttons for the direct `Explore in 3D`, `Exit viewer`, and `Reset camera` actions.
+- All actions remain keyboard reachable and expose their disabled state while the renderer loads.
 - Status changes use the existing polite viewer status region. Avoid duplicate announcements from the iframe.
 - The iframe retains its job-specific accessible title. Direct download remains the non-visual result alternative.
-- Below 400px, the group remains text-labeled and spans the toolbar width. `Controls` and `Full screen` occupy the next row.
+- Below 400px, the three toolbar actions share one equal-width row.
 - All targets remain 48px on touch layouts. Safe-area and reduced-motion requirements remain unchanged.
 
 ## Backend and API Contract
@@ -165,10 +166,11 @@ Delegate pipeline and packaging work to `pipeline_backend`. Preserve Standard as
 - [ ] Learned mode registers all 11 `gauss_attempt` views with normal geometric verification in a clean pipeline run.
 - [ ] Learned matching uses CPU on the current servOS package when the CUDA ONNX provider is unavailable; Brush remains on the GTX 1060.
 - [ ] Learned weights/caches and job checkpoints survive reboot under Nix store or `/persist`.
-- [ ] Fixed view is the initial camera mode and matches generated framing.
-- [ ] One click or keyboard selection enters Free camera; orbit and pan visibly change the rendered view.
-- [ ] Selecting Fixed view or pressing Escape restores the generated POV and page scrolling.
-- [ ] Camera mode remains obvious on desktop and mobile, including while loading or unsupported.
+- [ ] The initial frame matches the generated camera framing without presenting it as a mode.
+- [ ] One click or keyboard activation enters the interactive viewer; orbit and pan visibly change the rendered view.
+- [ ] Escape or Exit viewer restores page scrolling without changing the camera position; reactivation resumes that position.
+- [ ] Reset camera returns to the generated POV and preserves whether the viewer was active.
+- [ ] Camera actions remain obvious on desktop and mobile, including while loading or unsupported.
 - [ ] Full screen, Controls, direct download, viewer activation, and job switching continue to work.
 - [ ] Backend unit tests, frontend DOM/syntax checks, pointer interaction tests, and a live servOS browser test pass.
 
@@ -185,10 +187,10 @@ Delegate pipeline and packaging work to `pipeline_backend`. Preserve Standard as
 
 ### State, accessibility, layout, and cognition
 
-- [x] Loading, default, active, restoring, unsupported, offline, refresh, and failure states are specified.
-- [x] Native radio semantics, keyboard operation, focus return, live announcements, contrast, touch targets, and reduced motion are covered.
+- [x] Loading, ready, active, released, resetting, unsupported, offline, refresh, and failure states are specified.
+- [x] Native button semantics, keyboard operation, focus return, live announcements, contrast, touch targets, and reduced motion are covered.
 - [x] Existing five layout families remain unchanged.
-- [x] Matching offers two choices. Camera mode offers two choices. The viewer toolbar retains at most four decision groups.
+- [x] Matching offers two choices. Camera behavior uses direct actions rather than modes. The viewer toolbar retains three actions.
 
 ### Scored self-critique
 
@@ -197,10 +199,10 @@ Delegate pipeline and packaging work to `pipeline_backend`. Preserve Standard as
 | Distinctiveness | 4 | controls read as matching and camera instruments inside the existing reconstruction bay |
 | Hierarchy and focus | 4 | the splat remains the focal point; controls stay in its quiet toolbar |
 | Consistency | 4 | no token, system, icon, or voice drift |
-| Accessibility | 4 | native radio semantics, focus restoration, scroll ownership, and announcements are explicit |
-| State and edge coverage | 4 | learned-runtime and camera-transition failures have recoveries |
+| Accessibility | 4 | native control semantics, focus restoration, scroll ownership, and announcements are explicit |
+| State and edge coverage | 4 | learned-runtime and viewer-transition failures have recoveries |
 | Copy quality | 3 | plain user labels with technical names confined to Activity |
-| Restraint | 4 | one new fieldset and one compact two-position control only |
+| Restraint | 4 | one matching fieldset and three direct viewer actions only |
 | Motion motivation | 3 | only viewer restoration uses existing load-state motion |
 | **Total** | **30 / 32** | no axis is 2 or below |
 

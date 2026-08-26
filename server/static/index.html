@@ -84,25 +84,19 @@
               <div class="viewer-toolbar">
                 <div class="viewer-identification"><strong id="splat-viewer-label">Gaussian splat</strong><span id="viewer-file-meta"></span></div>
                 <div class="viewer-actions">
-                  <fieldset class="camera-mode-group" aria-label="Camera mode">
-                    <legend>Camera</legend>
-                    <div class="camera-segments">
-                      <label><input id="camera-fixed" type="radio" name="camera_mode" value="fixed" checked><span>Fixed view</span></label>
-                      <label><input id="camera-free" type="radio" name="camera_mode" value="free"><span>Free camera</span></label>
-                    </div>
-                  </fieldset>
+                  <button class="button button-quiet" id="reset-camera" type="button">Reset camera</button>
                   <button class="button button-quiet" id="viewer-controls" type="button" aria-expanded="false" aria-controls="controls-help">Controls</button>
                   <button class="button button-quiet" id="fullscreen-viewer" type="button">Full screen</button>
                 </div>
               </div>
               <div class="controls-help" id="controls-help" hidden>
                 <strong>Camera controls</strong>
-                <p id="controls-mode-copy">Camera movement is locked to the generated capture view.</p>
+                <p>Activate the viewer to orbit, pan, and zoom from the generated starting angle.</p>
                 <dl>
                   <div><dt>Mouse</dt><dd>Drag to orbit, right-drag to pan, wheel to zoom</dd></div>
                   <div><dt>Trackpad</dt><dd>Drag to orbit, two-finger scroll to zoom</dd></div>
                   <div><dt>Touch</dt><dd>One finger to orbit, two fingers to pan and pinch</dd></div>
-                  <div><dt>Keyboard</dt><dd>Escape restores Fixed view and page scrolling</dd></div>
+                  <div><dt>Keyboard</dt><dd>Escape returns control to page scrolling without moving the camera</dd></div>
                 </dl>
               </div>
               <div class="viewer-frame-shell" id="viewer-frame-shell">
@@ -111,11 +105,11 @@
                 <div class="orientation-cue" aria-hidden="true"><b>X</b><b>Y</b><b>Z</b></div>
                 <iframe id="splat-viewer-frame" title="Interactive Gaussian splat result" allow="fullscreen; xr-spatial-tracking" allowfullscreen></iframe>
                 <div class="viewer-activation" id="viewer-activation">
-                  <strong>Fixed viewpoint</strong>
-                  <button class="button button-quiet" id="activate-viewer" type="button">Use free camera</button>
-                  <p>Switch to Free camera to orbit, pan, and zoom.</p>
+                  <strong>Interactive camera</strong>
+                  <button class="button button-quiet" id="activate-viewer" type="button">Explore in 3D</button>
+                  <p>Drag to orbit · right-drag to pan · wheel or pinch to zoom</p>
                 </div>
-                <button class="button button-quiet exit-viewer" id="exit-viewer" type="button" hidden>Use fixed view</button>
+                <button class="button button-quiet exit-viewer" id="exit-viewer" type="button" hidden>Exit viewer</button>
               </div>
               <div class="viewer-status-line"><span id="viewer-status" role="status" aria-live="polite">Preparing interactive result</span><a class="download-link" id="download-splat" download>Download splat</a></div>
             </div>

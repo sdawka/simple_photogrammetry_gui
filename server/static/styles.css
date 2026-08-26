@@ -169,16 +169,6 @@ p, li, dd { text-wrap: pretty; }
 .viewer-identification strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-identification span, .viewer-status-line { color: var(--text-subtle); font: 500 11px/16px var(--font-utility); }
 .viewer-actions { flex-wrap: wrap; gap: 8px; }
-.camera-mode-group { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.camera-mode-group legend { padding: 0; color: var(--text-subtle); font: 500 11px/16px var(--font-utility); }
-.camera-segments { display: flex; min-width: 0; border: 1px solid var(--control-border); border-radius: 4px; }
-.camera-segments label { position: relative; min-width: 96px; min-height: 40px; cursor: pointer; }
-.camera-segments label + label { border-left: 1px solid var(--control-border); }
-.camera-segments input { position: absolute; opacity: 0; pointer-events: none; }
-.camera-segments span { min-height: 40px; display: grid; place-items: center; padding: 8px 12px; color: var(--text-muted); font-weight: 600; }
-.camera-segments input:checked + span { background: var(--accent); color: var(--ink-on-accent); }
-.camera-segments input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.camera-segments input:disabled + span { opacity: 0.48; cursor: not-allowed; }
 .controls-help { position: absolute; z-index: 20; right: 32px; max-width: 440px; padding: 16px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--elevated); box-shadow: var(--shadow-toast); }
 .controls-help > strong { display: block; margin-bottom: 12px; }
 .controls-help > p { margin-bottom: 12px; color: var(--text-muted); line-height: 23px; }
@@ -318,11 +308,7 @@ input[type="text"], select { width: 100%; min-height: 48px; padding: 8px 12px; b
   .view-tabs { padding: 0 16px; }
   .job-view { padding: 16px 16px 32px; }
   .viewer-toolbar { align-items: start; flex-direction: column; }
-  .viewer-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
-  .camera-mode-group { width: 100%; grid-column: 1 / -1; }
-  .camera-segments { flex: 1; }
-  .camera-segments label { flex: 1; min-height: 48px; }
-  .camera-segments span { min-height: 48px; }
+  .viewer-actions { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .viewer-actions .button { padding-inline: 8px; }
   .controls-help { right: 16px; left: 16px; max-width: none; }
   .viewer-frame-shell { min-height: min(56dvh, 560px); }
