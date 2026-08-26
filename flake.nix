@@ -106,6 +106,7 @@
           mkdir -p $out/bin
           cp fast_downscaler $out/bin/
         '';
+        meta.mainProgram = "fast_downscaler";
       };
 
       # The package assembly is shared, while each adapter supplies matching
@@ -165,6 +166,7 @@
             mkdir -p $out/bin
             cp fast_downscaler $out/bin/
           '';
+          meta.mainProgram = "fast_downscaler";
         };
       };
 
