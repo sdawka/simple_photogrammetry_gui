@@ -1,5 +1,6 @@
 import http.client
 import json
+import struct
 import tempfile
 import threading
 import unittest
@@ -92,6 +93,32 @@ class ApiTests(unittest.TestCase):
             {"kind": "splat", "settings": {"splat_steps": 1234}}
         )
         self.assertEqual(1234, settings["splat_steps"])
+
+    def test_completed_splat_exposes_diagnostics_and_framing_artifact(self):
+        job = self.server.store.create_job(
+            name="Sparse splat", kind="splat", quality="low", settings={}
+        )
+        root = self.server.store.job_dir(job["id"])
+        for number in range(11):
+            (root / "input" / f"{number}.jpg").write_bytes(b"image")
+        model = root / "work" / "images_scaled" / "sparse" / "0"
+        model.mkdir(parents=True)
+        (model / "images.bin").write_bytes(struct.pack("<Q", 7))
+        (model / "points3D.bin").write_bytes(struct.pack("<Q", 31))
+        (root / "results" / "export_30000.ply").write_text(
+            "ply\nformat ascii 1.0\nelement vertex 2\n"
+            "property float x\nproperty float y\nproperty float z\nend_header\n"
+            "-1 -1 -1\n1 1 1\n"
+        )
+
+        status, detail = self.request("GET", f"/api/v1/jobs/{job['id']}")
+        self.assertEqual(200, status)
+        self.assertEqual("poor", detail["capture_diagnostics"]["level"])
+        self.assertEqual(7, detail["capture_diagnostics"]["registered_views"])
+
+        status, payload = self.request("GET", f"/api/v1/jobs/{job['id']}/artifacts")
+        self.assertEqual(200, status)
+        self.assertIn("viewer-settings.json", [item["name"] for item in payload["artifacts"]])
 
 
 if __name__ == "__main__":

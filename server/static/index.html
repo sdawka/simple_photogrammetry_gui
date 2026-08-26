@@ -2,193 +2,196 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#282828">
-    <meta name="description" content="Run photogrammetry and Gaussian splat jobs on servOS.">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1D2021">
+    <meta name="description" content="Create, monitor, and inspect photogrammetry jobs on servOS.">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
     <title>Photogrammetry · servOS</title>
   </head>
   <body>
-    <header class="site-header">
+    <a class="skip-link" href="#job-workspace">Skip to selected job</a>
+
+    <header class="utility-header">
       <a class="brand" href="/" aria-label="Photogrammetry home">
-        <img src="/icon.svg" width="44" height="44" alt="">
-        <span>
-          <strong>Photogrammetry</strong>
-          <small>servOS GPU workspace</small>
-        </span>
+        <img src="/icon.svg" width="36" height="36" alt="">
+        <span><strong>Photogrammetry</strong><small>servOS GPU workspace</small></span>
       </a>
-      <div class="connection" id="connection" data-state="checking" role="status">
-        <span class="connection-dot" aria-hidden="true"></span>
-        <span id="connection-label">Connecting</span>
+      <div class="header-actions">
+        <div class="connection" id="connection" data-state="checking" role="status" aria-live="polite">
+          <strong id="connection-state">CHECKING</strong><span id="connection-label">Connecting</span>
+        </div>
+        <button class="button button-primary" id="new-reconstruction" type="button">New reconstruction</button>
       </div>
     </header>
 
-    <main>
-      <section class="panel create-panel" aria-labelledby="new-job-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">New reconstruction</p>
-            <h1 id="new-job-title">Turn photos into a 3D result</h1>
-          </div>
-          <button class="button button-quiet" id="toggle-create" type="button" aria-expanded="true">
-            Hide setup
-          </button>
+    <main class="workspace-shell">
+      <aside class="queue-rail" id="queue-rail" aria-labelledby="jobs-title">
+        <div class="queue-heading">
+          <div><h1 id="jobs-title">Reconstruction queue</h1><p id="queue-summary">Loading jobs</p></div>
+          <button class="button button-quiet button-compact" id="refresh-jobs" type="button">Refresh</button>
+        </div>
+        <div class="jobs-list" id="jobs-list" role="list" aria-label="Photogrammetry jobs"></div>
+        <div class="empty-state" id="jobs-empty" hidden>
+          <h2>No reconstructions yet</h2>
+          <p>Add at least three photos to begin. Thirty or more usually gives a small object better coverage.</p>
+          <button class="button button-primary" id="empty-new" type="button">New reconstruction</button>
+        </div>
+      </aside>
+
+      <section class="job-workspace" id="job-workspace" aria-labelledby="detail-title">
+        <button class="button button-quiet mobile-back" id="back-to-jobs" type="button" hidden>Back to jobs</button>
+        <div class="detail-placeholder" id="detail-placeholder">
+          <h2 id="detail-title">Select a reconstruction</h2>
+          <p>Choose a job to inspect its processing stages, result, activity, and files.</p>
+        </div>
+        <div id="job-not-found" class="detail-placeholder" hidden>
+          <h2>Job not found</h2>
+          <p>The requested job is no longer available. Choose another reconstruction from the queue.</p>
         </div>
 
-        <form id="job-form">
-          <div class="setup-grid">
-            <label class="field">
-              <span>Job name</span>
-              <input id="job-name" name="name" type="text" maxlength="80" autocomplete="off"
-                placeholder="Kitchen sculpture" required>
-            </label>
-
-            <fieldset class="field">
-              <legend>Output</legend>
-              <div class="segmented" id="kind-picker">
-                <label>
-                  <input type="radio" name="kind" value="mesh" checked>
-                  <span>Textured mesh</span>
-                </label>
-                <label>
-                  <input type="radio" name="kind" value="splat">
-                  <span>Gaussian splat</span>
-                </label>
-              </div>
-            </fieldset>
-
-            <label class="field" id="quality-field">
-              <span>Mesh quality</span>
-              <select id="quality" name="quality">
-                <option value="low">Low · fastest</option>
-                <option value="medium" selected>Medium · recommended</option>
-                <option value="high">High · most detail</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="drop-zone" id="drop-zone" tabindex="0" role="button"
-            aria-controls="photo-input" aria-describedby="photo-guidance">
-            <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple hidden>
-            <span class="drop-icon" aria-hidden="true">＋</span>
-            <strong id="drop-title">Choose photos or drop them here</strong>
-            <span id="photo-guidance">JPG or PNG · at least 3 photos · 20+ gives better coverage</span>
-          </div>
-
-          <div class="file-summary" id="file-summary" hidden>
+        <div id="detail-content" hidden>
+          <header class="job-heading">
             <div>
-              <strong id="file-count"></strong>
-              <span id="file-size"></span>
+              <div class="job-title-line"><h2 id="detail-name" tabindex="-1"></h2><span class="status-badge" id="detail-status"></span></div>
+              <p class="detail-meta" id="detail-meta"></p>
             </div>
-            <button class="text-button" id="clear-files" type="button">Clear</button>
-          </div>
-          <ul class="file-list" id="file-list" aria-label="Selected photos"></ul>
+          </header>
 
-          <div class="upload-progress" id="upload-progress" hidden aria-live="polite">
-            <div class="progress-copy">
-              <strong id="upload-label">Preparing upload…</strong>
-              <span id="upload-percent">0%</span>
+          <section class="reconstruction-rail" aria-labelledby="pipeline-title">
+            <div class="rail-heading">
+              <h3 id="pipeline-title">Reconstruction</h3>
+              <p><strong id="stage-label">Waiting</strong><span id="job-percent">Working</span></p>
             </div>
-            <div class="progress-track"><span id="upload-bar"></span></div>
-          </div>
+            <ol class="stage-list" id="stage-list"></ol>
+            <div class="progress-track" aria-hidden="true"><span id="job-bar"></span></div>
+          </section>
 
-          <div class="form-footer">
-            <p class="form-message" id="form-message" role="alert"></p>
-            <button class="button button-primary" id="submit-job" type="submit">Create job</button>
-          </div>
-        </form>
-      </section>
+          <section class="capture-diagnostic" id="capture-diagnostic" hidden aria-labelledby="diagnostic-title">
+            <div><h3 id="diagnostic-title"></h3><p class="diagnostic-facts" id="diagnostic-facts"></p><p id="diagnostic-copy"></p></div>
+            <button class="button button-quiet" id="diagnostic-tips" type="button" aria-expanded="false" aria-controls="capture-tips">How to recapture</button>
+          </section>
 
-      <div class="workspace">
-        <section class="panel jobs-panel" aria-labelledby="jobs-title">
-          <div class="section-heading compact">
-            <div>
-              <p class="eyebrow">Server queue</p>
-              <h2 id="jobs-title">Jobs</h2>
-            </div>
-            <button class="icon-button" id="refresh-jobs" type="button" title="Refresh jobs" aria-label="Refresh jobs">↻</button>
-          </div>
-          <div class="jobs-list" id="jobs-list"></div>
-          <div class="empty-state" id="jobs-empty">
-            <span aria-hidden="true">◇</span>
-            <strong>No jobs yet</strong>
-            <p>Add a photo set above to begin.</p>
-          </div>
-        </section>
+          <nav class="view-tabs" role="tablist" aria-label="Selected job views">
+            <button id="tab-result" type="button" role="tab" aria-controls="view-result" data-view="result">Result</button>
+            <button id="tab-activity" type="button" role="tab" aria-controls="view-activity" data-view="activity">Activity</button>
+            <button id="tab-files" type="button" role="tab" aria-controls="view-files" data-view="files">Files</button>
+          </nav>
 
-        <section class="panel detail-panel" id="detail-panel" aria-labelledby="detail-title">
-          <div class="detail-placeholder" id="detail-placeholder">
-            <span aria-hidden="true">⬡</span>
-            <h2 id="detail-title">Select a job</h2>
-            <p>Progress, logs, and finished artifacts will appear here.</p>
-          </div>
-
-          <div id="detail-content" hidden>
-            <div class="detail-header">
-              <div>
-                <div class="detail-title-line">
-                  <h2 id="detail-name"></h2>
-                  <span class="status-badge" id="detail-status"></span>
+          <section class="job-view result-view" id="view-result" role="tabpanel" aria-labelledby="tab-result">
+            <div class="preview" id="preview" hidden><img id="preview-image" alt="Generated result preview"></div>
+            <div class="calibrated-viewport" id="splat-viewer" hidden>
+              <div class="viewer-toolbar">
+                <div class="viewer-identification"><strong id="splat-viewer-label">Gaussian splat</strong><span id="viewer-file-meta"></span></div>
+                <div class="viewer-actions">
+                  <button class="button button-quiet" id="frame-result" type="button" aria-label="Reset camera and frame the entire result">Frame result</button>
+                  <button class="button button-quiet" id="viewer-controls" type="button" aria-expanded="false" aria-controls="controls-help">Controls</button>
+                  <button class="button button-quiet" id="fullscreen-viewer" type="button">Full screen</button>
                 </div>
-                <p class="detail-meta" id="detail-meta"></p>
               </div>
+              <div class="controls-help" id="controls-help" hidden>
+                <strong>Camera controls</strong>
+                <dl>
+                  <div><dt>Mouse</dt><dd>Drag to orbit, right-drag to pan, wheel to zoom</dd></div>
+                  <div><dt>Trackpad</dt><dd>Drag to orbit, two-finger scroll to zoom</dd></div>
+                  <div><dt>Touch</dt><dd>One finger to orbit, two fingers to pan and pinch</dd></div>
+                  <div><dt>Keyboard</dt><dd>Escape returns control to page scrolling</dd></div>
+                </dl>
+              </div>
+              <div class="viewer-frame-shell" id="viewer-frame-shell">
+                <span class="registration-mark mark-nw" aria-hidden="true"></span><span class="registration-mark mark-ne" aria-hidden="true"></span>
+                <span class="registration-mark mark-sw" aria-hidden="true"></span><span class="registration-mark mark-se" aria-hidden="true"></span>
+                <div class="orientation-cue" aria-hidden="true"><b>X</b><b>Y</b><b>Z</b></div>
+                <iframe id="splat-viewer-frame" title="Interactive Gaussian splat result" allow="fullscreen; xr-spatial-tracking" allowfullscreen></iframe>
+                <div class="viewer-activation" id="viewer-activation">
+                  <button class="button button-primary" id="activate-viewer" type="button">Explore in 3D</button>
+                  <p>Drag to orbit · right-drag to pan · wheel or pinch to zoom</p>
+                </div>
+                <button class="button button-quiet exit-viewer" id="exit-viewer" type="button" hidden>Exit viewer</button>
+              </div>
+              <div class="viewer-status-line"><span id="viewer-status" role="status" aria-live="polite">Preparing interactive result</span><a class="download-link" id="download-splat" download>Download splat</a></div>
+            </div>
+            <div class="result-empty" id="preview-fallback">
+              <h3>Result files are available</h3>
+              <p>An interactive preview is not available for this output. Download the original files from the Files view.</p>
+              <button class="button button-quiet" type="button" data-open-view="files">Open files</button>
+            </div>
+            <div class="result-metadata" id="result-metadata" hidden></div>
+          </section>
+
+          <section class="job-view activity-view" id="view-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+            <div class="activity-summary">
+              <div><h3 id="activity-state">Machine activity</h3><p id="activity-guidance">Current worker output appears below.</p></div>
               <button class="button button-danger" id="cancel-job" type="button" hidden>Cancel job</button>
             </div>
-
-            <div class="stage-card">
-              <div class="progress-copy">
-                <strong id="stage-label">Waiting</strong>
-                <span id="job-percent">—</span>
-              </div>
-              <div class="progress-track"><span id="job-bar"></span></div>
+            <div class="log-toolbar">
+              <label><input id="follow-logs" type="checkbox" checked> Follow activity</label>
+              <button class="button button-quiet button-compact" id="copy-logs" type="button">Copy log</button>
             </div>
+            <pre id="job-logs" tabindex="0" role="log" aria-live="polite" aria-relevant="additions text">Loading activity</pre>
+          </section>
 
-            <section class="result-section" id="result-section" hidden aria-labelledby="result-title">
-              <div class="subheading">
-                <h3 id="result-title">Results</h3>
-                <span>Stored on the server</span>
-              </div>
-              <div class="preview" id="preview" hidden>
-                <img id="preview-image" alt="Generated result preview">
-              </div>
-              <div class="splat-viewer" id="splat-viewer" hidden>
-                <div class="splat-viewer-toolbar">
-                  <div>
-                    <strong id="splat-viewer-label">Interactive splat</strong>
-                    <span>Drag to orbit · scroll or pinch to zoom</span>
-                  </div>
-                  <a class="text-button" id="open-splat-viewer" target="_blank" rel="noopener">Open full screen</a>
-                </div>
-                <iframe id="splat-viewer-frame" title="Interactive Gaussian splat viewer"
-                  allow="fullscreen; xr-spatial-tracking" allowfullscreen></iframe>
-              </div>
-              <div class="preview-fallback" id="preview-fallback">
-                <span aria-hidden="true">◈</span>
-                <div>
-                  <strong>Download to view in 3D</strong>
-                  <p>Interactive browser rendering is an optional enhancement; original output files remain available below.</p>
-                </div>
-              </div>
-              <div class="artifact-list" id="artifact-list"></div>
-            </section>
+          <section class="job-view files-view" id="view-files" role="tabpanel" aria-labelledby="tab-files" hidden>
+            <div class="view-heading"><div><h3>Result files</h3><p>Original files stored on the server.</p></div></div>
+            <div class="table-scroll"><table class="artifact-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Size</th><th><span class="visually-hidden">Download</span></th></tr></thead>
+              <tbody id="artifact-list"></tbody>
+            </table></div>
+            <p class="table-empty" id="files-empty">No result files yet.</p>
+          </section>
 
-            <section class="logs-section" aria-labelledby="logs-title">
-              <div class="subheading">
-                <h3 id="logs-title">Live log</h3>
-                <div>
-                  <label class="follow-label"><input id="follow-logs" type="checkbox" checked> Follow</label>
-                  <button class="text-button" id="copy-logs" type="button">Copy</button>
-                </div>
-              </div>
-              <pre id="job-logs" tabindex="0">Waiting for log output…</pre>
-            </section>
-          </div>
-        </section>
-      </div>
+          <section class="capture-tips" id="capture-tips" hidden aria-labelledby="capture-tips-title">
+            <div class="tips-heading"><h3 id="capture-tips-title">Capture a stronger reconstruction</h3><button class="button button-quiet button-compact" id="close-capture-tips" type="button">Close</button></div>
+            <ol>
+              <li>Photograph a complete arc at two heights with 60% to 80% overlap.</li>
+              <li>Use at least 30 sharp views for a small object.</li>
+              <li>Keep focus, exposure, lighting, and subject position fixed.</li>
+              <li>Use diffuse light and reduce reflections where safe.</li>
+              <li>Transparent acrylic, mirrors, glossy black surfaces, thin fibers, and moving detail reconstruct poorly. Use removable matte scanning spray only when safe.</li>
+              <li>Add a textured, non-reflective background when the subject lacks trackable detail.</li>
+            </ol>
+          </section>
+        </div>
+      </section>
     </main>
 
-    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <dialog class="new-drawer" id="new-drawer" aria-labelledby="new-job-title">
+      <form id="job-form" method="dialog">
+        <header class="drawer-header">
+          <div><h2 id="new-job-title">New reconstruction</h2><p>Choose the output, then add a well-covered photo set.</p></div>
+          <button class="button button-quiet button-compact" id="close-drawer" type="button">Close</button>
+        </header>
+        <div class="drawer-body">
+          <section class="form-group" aria-labelledby="job-group-title">
+            <h3 id="job-group-title">Job</h3>
+            <label class="field" for="job-name">Name</label>
+            <input id="job-name" name="name" type="text" maxlength="80" autocomplete="off" placeholder="Kitchen sculpture" required>
+            <fieldset class="field-set"><legend>Output</legend><label><input type="radio" name="kind" value="mesh" checked> Textured mesh</label><label><input type="radio" name="kind" value="splat"> Gaussian splat</label></fieldset>
+          </section>
+          <section class="form-group" id="quality-field" aria-labelledby="quality-title">
+            <h3 id="quality-title">Quality</h3><label class="field" for="quality">Mesh quality</label>
+            <select id="quality" name="quality"><option value="low">Low · fastest</option><option value="medium" selected>Medium · recommended</option><option value="high">High · most detail</option></select>
+          </section>
+          <section class="form-group" aria-labelledby="photos-title">
+            <h3 id="photos-title">Photos</h3>
+            <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-controls="photo-input" aria-describedby="photo-guidance">
+              <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple hidden>
+              <strong id="drop-title">Choose photos or drop them here</strong><span id="photo-guidance">JPG or PNG · at least 3 photos · 30 or more recommended</span>
+            </div>
+            <div class="file-summary" id="file-summary" hidden><p><strong id="file-count"></strong><span id="file-size"></span></p><button class="button button-quiet button-compact" id="clear-files" type="button">Clear photos</button></div>
+            <p class="field-error" id="file-errors" role="status" aria-live="polite"></p>
+            <ul class="file-list" id="file-list" aria-label="Selected photos"></ul>
+          </section>
+          <details class="capture-guide"><summary>Review capture guide</summary><p>Circle the object at two heights, keep 60% to 80% overlap, and use diffuse, consistent light. Reflective, transparent, or thin subjects need extra texture and coverage.</p></details>
+          <div class="upload-progress" id="upload-progress" hidden aria-live="polite"><div class="progress-copy"><strong id="upload-label">Preparing upload</strong><span id="upload-percent">0%</span></div><div class="progress-track"><span id="upload-bar"></span></div></div>
+          <p class="form-message" id="form-message" role="alert" tabindex="-1"></p>
+        </div>
+        <footer class="drawer-footer"><button class="button button-quiet" id="cancel-create" type="button">Cancel</button><button class="button button-primary" id="submit-job" type="submit">Create job</button></footer>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toast-copy"></span><button id="dismiss-toast" type="button" aria-label="Dismiss notification">Close</button></div>
+    <div class="visually-hidden" id="app-announcer" role="status" aria-live="polite"></div>
     <script src="/app.js" defer></script>
   </body>
 </html>

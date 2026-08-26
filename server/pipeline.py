@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+from .reconstruction import ensure_viewer_settings
 from .store import JobStore, utc_now
 
 
@@ -300,6 +301,7 @@ class Pipeline:
             )
             if not any(self.results.rglob("*.ply")):
                 raise PipelineError("Brush completed without exporting a .ply splat")
+            ensure_viewer_settings(self.results)
 
         self._stage("train", "Train Gaussian splat", 6, total, train)
 

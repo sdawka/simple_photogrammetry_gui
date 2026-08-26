@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .reconstruction import capture_diagnostics
+
 
 TERMINAL_STATES = {"completed", "failed", "cancelled"}
 
@@ -109,6 +111,9 @@ class JobStore:
         ] if input_dir.exists() else []
         job["uploaded_images"] = len(files)
         job["uploaded_bytes"] = sum(p.stat().st_size for p in files)
+        diagnostics = capture_diagnostics(self.job_dir(job["id"]), len(files))
+        if diagnostics is not None:
+            job["capture_diagnostics"] = diagnostics
         return job
 
     def get_job(self, job_id: str) -> dict[str, Any]:

@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from .pipeline import Toolchain, Worker
+from .reconstruction import ensure_viewer_settings
 from .store import JobStore, utc_now
 
 
@@ -180,8 +181,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"lines": lines, "next": next_line})
             return
         if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "artifacts":
-            self.server.store.get_job(parts[1])
+            job = self.server.store.get_job(parts[1])
             result_dir = self.server.store.job_dir(parts[1]) / "results"
+            if job["kind"] == "splat":
+                ensure_viewer_settings(result_dir)
             artifacts = [
                 {"name": p.relative_to(result_dir).as_posix(), "bytes": p.stat().st_size}
                 for p in sorted(result_dir.rglob("*")) if p.is_file()
