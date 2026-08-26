@@ -47,6 +47,15 @@ Mesh jobs run image preparation, COLMAP/GLOMAP, OpenMVS densification,
 Poisson reconstruction, decimation, and texture generation. Splat jobs share
 the COLMAP/GLOMAP stages and then train Brush for 30,000 steps by default.
 
+Jobs use standard exhaustive SIFT matching unless their JSON settings select
+`"feature_matcher":"learned_matcher"`. Learned matching runs ALIKED_N16ROT
+feature extraction and ALIKED LightGlue inference on the CPU with one shared
+camera, verifies every proposed pair with COLMAP's normal geometry thresholds,
+and only searches cross-component bridge pairs while the verified view graph is
+disconnected. It never falls back silently to SIFT. The pinned ONNX weights are
+part of the immutable Nix package; mutable runtime caches default to
+`<state-dir>/cache` or `PHOTOGRAMMETRY_CACHE_DIR`.
+
 Completed splat jobs open their highest-numbered PLY checkpoint in an embedded,
 interactive viewer with orbit, zoom, touch, and full-screen controls. The viewer
 is bundled into the Nix package, so rendering does not depend on a public CDN;
@@ -70,6 +79,10 @@ Uploads accept JPG, JPEG, and PNG files, require at least three images, limit
 each file to 200 MiB, and limit a job to 20 GiB. The browser uploads files
 individually so it can show progress without buffering a whole photo set in
 memory.
+
+Health responses advertise `capabilities.learned_matching`. A job requesting
+learned matching receives HTTP 422 with code `learned_matcher_unavailable` if
+the server package does not contain both pinned models.
 
 ## servOS access
 

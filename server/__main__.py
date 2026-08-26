@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import threading
 from pathlib import Path
@@ -8,6 +9,15 @@ from pathlib import Path
 from .app import create_server, create_web_server
 from .pipeline import Toolchain, Worker
 from .store import JobStore
+
+
+def _configure_runtime_cache(state_dir: Path) -> Path:
+    cache_dir = Path(
+        os.environ.get("PHOTOGRAMMETRY_CACHE_DIR", state_dir / "cache")
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", str(cache_dir))
+    return cache_dir
 
 
 def parser() -> argparse.ArgumentParser:
@@ -54,6 +64,7 @@ def _run_web(args) -> None:
 
 
 def _run_worker(args) -> None:
+    cache_dir = _configure_runtime_cache(args.state_dir)
     worker = Worker(JobStore(args.state_dir), Toolchain.from_bin_dir(args.tools_dir))
 
     def stop(_signum, _frame) -> None:
@@ -62,11 +73,12 @@ def _run_worker(args) -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     worker.start()
-    print("Photogrammetry worker started", flush=True)
+    print(f"Photogrammetry worker started; runtime cache: {cache_dir}", flush=True)
     worker.thread.join()
 
 
 def _run_combined(args) -> None:
+    _configure_runtime_cache(args.state_dir)
     server = create_server(
         args.host,
         args.port,

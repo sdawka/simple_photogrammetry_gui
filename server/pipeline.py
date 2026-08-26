@@ -13,7 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-from .reconstruction import ensure_viewer_settings
+from .learned_matching import (
+    BRIDGE_BATCH_SIZE,
+    MAX_BRIDGE_PAIRS,
+    attempted_pairs_from_files,
+    bridge_candidates,
+    connected_components,
+    nearby_pairs,
+    read_database_images,
+    verified_pairs,
+    write_pair_file,
+)
+from .reconstruction import capture_diagnostics, ensure_viewer_settings
 from .store import JobStore, utc_now
 
 
@@ -37,9 +48,13 @@ class Toolchain:
     decimate_mesh: Path
     texrecon: Path
     downscaler: Path
+    aliked_n16rot_model: Path
+    aliked_lightglue_model: Path
 
     @classmethod
     def from_bin_dir(cls, bin_dir: Path) -> "Toolchain":
+        package_root = bin_dir.parent.parent
+        model_dir = package_root / "share" / "photogrammetry-server" / "models"
         return cls(
             colmap=bin_dir / "colmap",
             brush=bin_dir / "brush" / "brush_app",
@@ -51,6 +66,8 @@ class Toolchain:
             decimate_mesh=bin_dir / "decimateMesh",
             texrecon=bin_dir / "texrecon",
             downscaler=bin_dir / "fast_downscaler",
+            aliked_n16rot_model=model_dir / "aliked-n16rot.onnx",
+            aliked_lightglue_model=model_dir / "aliked-lightglue.onnx",
         )
 
 
@@ -227,37 +244,53 @@ class Pipeline:
         matcher = job["settings"].get("feature_matcher", "exhaustive_matcher")
 
         self._stage("prepare", "Copy and resize images", 1, total, lambda: self._prepare_images(job["quality"]))
-        self._stage(
-            "features",
-            "SIFT feature extraction",
-            2,
-            total,
-            lambda: self.runner.run(
-                self.tools.colmap,
-                [
-                    "feature_extractor",
-                    "--database_path", database,
-                    "--image_path", images,
-                    "--FeatureExtraction.use_gpu", "1",
-                    "--FeatureExtraction.num_threads", threads,
-                ],
-            ),
-        )
-        self._stage(
-            "matching",
-            "SIFT feature matching",
-            3,
-            total,
-            lambda: self.runner.run(
-                self.tools.colmap,
-                [
-                    matcher,
-                    "--FeatureMatching.use_gpu", "1",
-                    "--database_path", database,
-                    "--FeatureMatching.num_threads", threads,
-                ],
-            ),
-        )
+        if matcher == "learned_matcher":
+            self._stage(
+                "features",
+                "Learned feature extraction (ALIKED, CPU)",
+                2,
+                total,
+                lambda: self._extract_learned_features(database, images, threads),
+            )
+            self._stage(
+                "matching",
+                "Learned feature matching (LightGlue, CPU)",
+                3,
+                total,
+                lambda: self._match_learned_features(database, threads),
+            )
+        else:
+            self._stage(
+                "features",
+                "SIFT feature extraction",
+                2,
+                total,
+                lambda: self.runner.run(
+                    self.tools.colmap,
+                    [
+                        "feature_extractor",
+                        "--database_path", database,
+                        "--image_path", images,
+                        "--FeatureExtraction.use_gpu", "1",
+                        "--FeatureExtraction.num_threads", threads,
+                    ],
+                ),
+            )
+            self._stage(
+                "matching",
+                "SIFT feature matching",
+                3,
+                total,
+                lambda: self.runner.run(
+                    self.tools.colmap,
+                    [
+                        matcher,
+                        "--FeatureMatching.use_gpu", "1",
+                        "--database_path", database,
+                        "--FeatureMatching.num_threads", threads,
+                    ],
+                ),
+            )
 
         def calibrate() -> None:
             shutil.copy2(database, global_database)
@@ -268,6 +301,152 @@ class Pipeline:
 
         self._stage("calibrate", "Calibrate view graph", 4, total, calibrate)
         return images
+
+    def _require_learned_model(self, path: Path, name: str) -> None:
+        if not path.is_file():
+            raise PipelineError(
+                f"Learned matching runtime is unavailable: missing {name} model at {path}"
+            )
+
+    def _extract_learned_features(self, database: Path, images: Path, threads: str) -> None:
+        model = self.tools.aliked_n16rot_model
+        self._require_learned_model(model, "ALIKED_N16ROT")
+        self.log(
+            f"Learned feature model: ALIKED_N16ROT; execution_device=CPU; model={model}"
+        )
+        self.runner.run(
+            self.tools.colmap,
+            [
+                "feature_extractor",
+                "--database_path", database,
+                "--image_path", images,
+                "--ImageReader.camera_model", "SIMPLE_RADIAL",
+                "--ImageReader.single_camera", "1",
+                "--FeatureExtraction.type", "ALIKED_N16ROT",
+                "--FeatureExtraction.use_gpu", "0",
+                "--FeatureExtraction.num_threads", threads,
+                "--AlikedExtraction.max_num_features", "4096",
+                "--AlikedExtraction.n16rot_model_path", model,
+            ],
+        )
+
+    def _run_learned_pair_batch(
+        self,
+        database: Path,
+        images,
+        pairs,
+        pair_file: Path,
+        threads: str,
+        label: str,
+    ) -> None:
+        if not pairs:
+            return
+        pending_file = pair_file.with_suffix(".pending")
+        write_pair_file(pending_file, images, pairs)
+        self.log(f"Learned matching batch: {label}; candidate_pair_count={len(pairs)}")
+        try:
+            self.runner.run(
+                self.tools.colmap,
+                [
+                    "matches_importer",
+                    "--database_path", database,
+                    "--match_list_path", pending_file,
+                    "--match_type", "pairs",
+                    "--FeatureMatching.type", "ALIKED_LIGHTGLUE",
+                    "--FeatureMatching.use_gpu", "0",
+                    "--FeatureMatching.num_threads", threads,
+                    "--FeatureMatching.guided_matching", "0",
+                    "--FeatureMatching.skip_geometric_verification", "0",
+                    "--AlikedMatching.lightglue_model_path", self.tools.aliked_lightglue_model,
+                    "--TwoViewGeometry.min_num_inliers", "15",
+                    "--TwoViewGeometry.max_error", "4",
+                    "--TwoViewGeometry.min_inlier_ratio", "0.25",
+                ],
+            )
+        except Exception:
+            pending_file.unlink(missing_ok=True)
+            raise
+        pending_file.replace(pair_file)
+
+    def _match_learned_features(self, database: Path, threads: str) -> None:
+        model = self.tools.aliked_lightglue_model
+        self._require_learned_model(model, "ALIKED_LIGHTGLUE")
+        images = read_database_images(database)
+        if len(images) < 2:
+            raise PipelineError("Learned matching needs at least two extracted images")
+
+        pair_dir = self.work / "learned_pairs"
+        for stale in pair_dir.glob("*.pending"):
+            stale.unlink()
+        attempted = attempted_pairs_from_files(pair_dir, images)
+        initial = [pair for pair in nearby_pairs(images) if pair not in attempted]
+        self.log(
+            "Learned pair discovery: ordering=filename; nearby_radius=2; "
+            f"bridge_batch_size={BRIDGE_BATCH_SIZE}; max_bridge_pairs={MAX_BRIDGE_PAIRS}"
+        )
+        self.log(
+            f"Learned match model: ALIKED_LIGHTGLUE; execution_device=CPU; model={model}"
+        )
+        self._run_learned_pair_batch(
+            database, images, initial, pair_dir / "nearby.txt", threads, "adjacent_and_nearby",
+        )
+        attempted.update(initial)
+
+        fallback_reason = "none"
+        bridge_count = sum(1 for pair in attempted if pair not in set(nearby_pairs(images)))
+        batch_index = len(list(pair_dir.glob("bridge_*.txt")))
+        while True:
+            verified = verified_pairs(database)
+            components = connected_components(
+                (image.image_id for image in images), verified,
+            )
+            self.log(
+                "Learned verified graph: "
+                f"verified_pair_count={len(verified)}; component_count={len(components)}"
+            )
+            if len(components) <= 1:
+                break
+            remaining = MAX_BRIDGE_PAIRS - bridge_count
+            if remaining <= 0:
+                fallback_reason = f"verified_graph_disconnected_bridge_limit_{MAX_BRIDGE_PAIRS}"
+                break
+            candidates = bridge_candidates(
+                images,
+                components,
+                attempted,
+                limit=min(BRIDGE_BATCH_SIZE, remaining),
+            )
+            if not candidates:
+                fallback_reason = "verified_graph_disconnected_candidates_exhausted"
+                break
+            batch_index += 1
+            self._run_learned_pair_batch(
+                database,
+                images,
+                candidates,
+                pair_dir / f"bridge_{batch_index:03d}.txt",
+                threads,
+                f"cross_component_{batch_index}",
+            )
+            attempted.update(candidates)
+            bridge_count += len(candidates)
+
+        verified = verified_pairs(database)
+        self.log(
+            "Learned matching summary: models=ALIKED_N16ROT+ALIKED_LIGHTGLUE; "
+            f"execution_device=CPU; candidate_pair_count={len(attempted)}; "
+            f"verified_pair_count={len(verified)}; fallback_reason={fallback_reason}"
+        )
+
+    def _log_learned_registration(self, job: dict) -> None:
+        if job["settings"].get("feature_matcher") != "learned_matcher":
+            return
+        diagnostics = capture_diagnostics(
+            self.root, self.store.get_job(self.job_id)["uploaded_images"]
+        )
+        registered = diagnostics.get("registered_views") if diagnostics else None
+        count = registered if registered is not None else "unknown"
+        self.log(f"Learned mapping result: registered_view_count={count}")
 
     def _run_splat(self, job: dict) -> None:
         total = 6
@@ -286,6 +465,7 @@ class Pipeline:
                     "--output_path", images,
                 ],
             )
+            self._log_learned_registration(job)
 
         self._stage("map", "Align cameras with GLOMAP", 5, total, map_scene)
 
@@ -324,6 +504,7 @@ class Pipeline:
                     "--output_path", sparse,
                 ],
             )
+            self._log_learned_registration(job)
 
         self._stage("map", "Align cameras with GLOMAP", 5, total, map_scene)
 

@@ -40,6 +40,9 @@ versions.
 - [`nix/server-package.nix`](../nix/server-package.nix) assembles the same
   native tools with the headless API and browser UI, without building Flutter.
   Its CUDA inputs target only compute capability 6.1 for the servOS GTX 1060.
+  It also fetches the checksum-pinned ALIKED_N16ROT and LightGlue ONNX weights
+  into `share/photogrammetry-server/models`; learned inference does not fetch
+  executable state or model data at job runtime.
 - [`nix/openmvs-cuda.nix`](../nix/openmvs-cuda.nix) adds CUDA to nixpkgs'
   OpenMVS package. Nixpkgs already supplies a CUDA variant of COLMAP, but its
   OpenMVS package has no equivalent switch.

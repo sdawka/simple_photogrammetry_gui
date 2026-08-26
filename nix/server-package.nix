@@ -2,6 +2,7 @@
   lib,
   stdenvNoCC,
   makeWrapper,
+  fetchurl,
   brush-splat,
   python3,
   callPackage,
@@ -17,6 +18,14 @@
 }:
 
 let
+  aliked-n16rot-model = fetchurl {
+    url = "https://github.com/colmap/colmap/releases/download/3.13.0/aliked-n16rot.onnx";
+    hash = "sha256-OcQj0KbwPTnsidPR1hhTdlwvtqi4OBN2xwPldYd4pUc=";
+  };
+  aliked-lightglue-model = fetchurl {
+    url = "https://github.com/colmap/colmap/releases/download/3.13.0/aliked-lightglue.onnx";
+    hash = "sha256-uaXecgRkixioz13KyBn50w3hpZYe8DdWgDyLhsLc640=";
+  };
   mvs-texturing = callPackage ./mvs-texturing.nix {
     inherit
       mvsTexturingSource
@@ -30,7 +39,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "simple-photogrammetry-server-cuda-sm61";
-  version = "1.1.0+1";
+  version = "1.2.0";
 
   src = lib.cleanSource ../.;
   nativeBuildInputs = [ makeWrapper pythonEnv ];
@@ -49,10 +58,15 @@ stdenvNoCC.mkDerivation {
     mkdir -p \
       "$out/bin" \
       "$out/lib/photogrammetry-server" \
+      "$out/share/photogrammetry-server/models" \
       "$out/usr/bin/OpenMVS" \
       "$out/usr/bin/brush"
 
     cp -R server "$out/lib/photogrammetry-server/server"
+    cp ${aliked-n16rot-model} \
+      "$out/share/photogrammetry-server/models/aliked-n16rot.onnx"
+    cp ${aliked-lightglue-model} \
+      "$out/share/photogrammetry-server/models/aliked-lightglue.onnx"
 
     mkdir -p "$out/lib/photogrammetry-server/server/static/viewer"
     cp \

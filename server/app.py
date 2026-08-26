@@ -58,7 +58,9 @@ def validate_job_payload(payload: dict) -> tuple[str, str, str, dict]:
     }
     if normalized["cpu_threads"] < -1 or normalized["cpu_threads"] == 0:
         raise ValueError("cpu_threads must be -1 or a positive integer")
-    if normalized["feature_matcher"] not in {"exhaustive_matcher", "sequential_matcher"}:
+    if normalized["feature_matcher"] not in {
+        "exhaustive_matcher", "sequential_matcher", "learned_matcher",
+    }:
         raise ValueError("Unsupported feature matcher")
     if normalized["mesh_type"] not in {"poissonrecon", "openmvs"}:
         raise ValueError("mesh_type must be poissonrecon or openmvs")
@@ -70,7 +72,14 @@ def validate_job_payload(payload: dict) -> tuple[str, str, str, dict]:
 class PhotogrammetryServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, store: JobStore, worker, web_dir: Path | None):
+    def __init__(
+        self,
+        address,
+        store: JobStore,
+        worker,
+        web_dir: Path | None,
+        bin_dir: Path,
+    ):
         super().__init__(address, RequestHandler)
         self.store = store
         self.worker = worker
@@ -78,6 +87,10 @@ class PhotogrammetryServer(ThreadingHTTPServer):
         self.max_image_bytes = int(os.environ.get("PHOTOGRAMMETRY_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES))
         self.max_job_bytes = int(os.environ.get("PHOTOGRAMMETRY_MAX_JOB_BYTES", DEFAULT_MAX_JOB_BYTES))
         self.min_free_bytes = int(os.environ.get("PHOTOGRAMMETRY_MIN_FREE_BYTES", DEFAULT_MIN_FREE_BYTES))
+        tools = Toolchain.from_bin_dir(bin_dir)
+        self.learned_matching_supported = (
+            tools.aliked_n16rot_model.is_file() and tools.aliked_lightglue_model.is_file()
+        )
 
 
 class RemoteWorkerController:
@@ -121,8 +134,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _error(self, status: int, message: str) -> None:
-        self._json(status, {"error": message})
+    def _error(self, status: int, message: str, *, code: str | None = None) -> None:
+        payload = {"error": message}
+        if code is not None:
+            payload["code"] = code
+        self._json(status, payload)
 
     def _body_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
@@ -142,7 +158,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             path = urlsplit(self.path).path
             if path == f"{API_PREFIX}/health":
-                self._json(HTTPStatus.OK, {"status": "ok"})
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "status": "ok",
+                        "capabilities": {
+                            "learned_matching": self.server.learned_matching_supported,
+                        },
+                    },
+                )
                 return
             if path.startswith(API_PREFIX):
                 self._api_get()
@@ -207,6 +231,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             parts = self._parts()
             if parts == ["jobs"]:
                 name, kind, quality, settings = validate_job_payload(self._body_json())
+                if settings["feature_matcher"] == "learned_matcher" and not self.server.learned_matching_supported:
+                    self._error(
+                        HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "This server does not include learned matching.",
+                        code="learned_matcher_unavailable",
+                    )
+                    return
                 if os.statvfs(self.server.store.data_dir).f_bavail * os.statvfs(self.server.store.data_dir).f_frsize < self.server.min_free_bytes:
                     self._error(HTTPStatus.INSUFFICIENT_STORAGE, "Not enough free disk space to create a job")
                     return
@@ -346,6 +377,7 @@ def create_server(
         store,
         worker,
         web_dir,
+        bin_dir,
     )
     worker.start()
     return server
@@ -357,10 +389,14 @@ def create_web_server(
     *,
     data_dir: Path,
     web_dir: Path | None,
+    bin_dir: Path | None = None,
 ) -> PhotogrammetryServer:
     store = JobStore(data_dir)
     web_dir = resolve_web_dir(web_dir)
-    return PhotogrammetryServer((host, port), store, RemoteWorkerController(store), web_dir)
+    bin_dir = bin_dir or Path(os.environ.get("PHOTOGRAMMETRY_BIN_DIR", "/usr/bin"))
+    return PhotogrammetryServer(
+        (host, port), store, RemoteWorkerController(store), web_dir, bin_dir,
+    )
 
 
 def resolve_web_dir(web_dir: Path | None) -> Path | None:

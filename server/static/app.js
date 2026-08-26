@@ -8,6 +8,8 @@
   const VIEW_NAMES = new Set(["result", "activity", "files"]);
   const CONFIG = Object.freeze({
     viewerMemoryWarningBytes: window.PHOTOGRAMMETRY_CONFIG?.viewerMemoryWarningBytes ?? 200 * 1024 * 1024,
+    viewerSlowMs: window.PHOTOGRAMMETRY_CONFIG?.viewerSlowMs ?? 10000,
+    viewerTimeoutMs: window.PHOTOGRAMMETRY_CONFIG?.viewerTimeoutMs ?? 45000,
   });
   const $ = (selector) => document.querySelector(selector);
 
@@ -24,14 +26,15 @@
     preview: $("#preview"), previewImage: $("#preview-image"), previewFallback: $("#preview-fallback"), resultMetadata: $("#result-metadata"),
     splatViewer: $("#splat-viewer"), splatViewerLabel: $("#splat-viewer-label"), viewerFileMeta: $("#viewer-file-meta"),
     viewerFrameShell: $("#viewer-frame-shell"), splatViewerFrame: $("#splat-viewer-frame"), viewerActivation: $("#viewer-activation"),
-    activateViewer: $("#activate-viewer"), exitViewer: $("#exit-viewer"), frameResult: $("#frame-result"),
-    viewerControls: $("#viewer-controls"), controlsHelp: $("#controls-help"), fullscreenViewer: $("#fullscreen-viewer"),
+    activateViewer: $("#activate-viewer"), exitViewer: $("#exit-viewer"), cameraFixed: $("#camera-fixed"), cameraFree: $("#camera-free"),
+    viewerControls: $("#viewer-controls"), controlsHelp: $("#controls-help"), controlsModeCopy: $("#controls-mode-copy"), fullscreenViewer: $("#fullscreen-viewer"),
     viewerStatus: $("#viewer-status"), downloadSplat: $("#download-splat"),
     activityState: $("#activity-state"), activityGuidance: $("#activity-guidance"), cancelJob: $("#cancel-job"),
     followLogs: $("#follow-logs"), copyLogs: $("#copy-logs"), jobLogs: $("#job-logs"),
     artifactList: $("#artifact-list"), filesEmpty: $("#files-empty"),
     drawer: $("#new-drawer"), form: $("#job-form"), closeDrawer: $("#close-drawer"), cancelCreate: $("#cancel-create"),
     name: $("#job-name"), quality: $("#quality"), qualityField: $("#quality-field"), dropZone: $("#drop-zone"), photoInput: $("#photo-input"),
+    matcherInputs: [...document.querySelectorAll('input[name="feature_matcher"]')], matcherNote: $("#matching-method-note"),
     dropTitle: $("#drop-title"), fileSummary: $("#file-summary"), fileCount: $("#file-count"), fileSize: $("#file-size"),
     fileList: $("#file-list"), fileErrors: $("#file-errors"), clearFiles: $("#clear-files"), submit: $("#submit-job"),
     formMessage: $("#form-message"), uploadProgress: $("#upload-progress"), uploadLabel: $("#upload-label"),
@@ -44,7 +47,9 @@
     files: [], rejectedFiles: [], objectUrls: [], jobs: [], selectedId: null, selectedJob: null, currentView: null,
     logsFor: null, logCursor: 0, logText: "", artifacts: [], artifactsFor: null, artifactsFingerprint: "",
     polling: false, uploading: false, resumeJobId: null, toastTimer: null, splatViewerFor: null, viewerUrl: null,
-    viewerActive: false, viewerReady: false, viewerResetting: false, viewerFullscreen: false, viewerDocument: null, viewerHandlers: null,
+    cameraMode: "fixed", viewerActive: false, viewerReady: false, viewerResetting: false, viewerFullscreen: false,
+    viewerLoadFailed: false, viewerLoadToken: 0, viewerSlowTimer: null, viewerTimeoutTimer: null,
+    restoreFixedFocus: false, announceFixedRestore: false, viewerDocument: null, viewerHandlers: null,
     previousJobState: null, previousStage: null, initialUrlHadJob: false,
   };
 
@@ -77,7 +82,7 @@
     elements.connection.dataset.state = online ? "online" : "offline";
     elements.connectionState.textContent = online ? "ONLINE" : "OFFLINE";
     elements.connectionLabel.textContent = label || (online ? "Server online" : "Server unavailable");
-    elements.submit.disabled = !online || state.uploading;
+    syncCreateControls();
     if (changed && online === false) announce("Server unavailable. Existing results remain available in this page.");
   }
 
@@ -142,6 +147,23 @@
   }
 
   function selectedKind() { return elements.form.elements.kind.value; }
+  function selectedMatcher() { return elements.form.elements.feature_matcher.value; }
+
+  function updateMatcherNote() {
+    elements.matcherNote.textContent = selectedMatcher() === "learned_matcher"
+      ? "Runs feature matching on CPU on this server. Gaussian training still uses the GPU."
+      : "Uses standard feature matching for this job.";
+  }
+
+  function syncCreateControls() {
+    const disabled = state.online !== true || state.uploading;
+    elements.form.querySelectorAll("input, select").forEach((control) => { control.disabled = disabled; });
+    elements.clearFiles.disabled = disabled;
+    elements.submit.disabled = disabled;
+    elements.dropZone.setAttribute("aria-disabled", String(disabled));
+    elements.dropZone.tabIndex = disabled ? -1 : 0;
+  }
+
   function updateKind() {
     const isMesh = selectedKind() === "mesh";
     elements.qualityField.hidden = !isMesh;
@@ -250,7 +272,7 @@
       return;
     }
     state.uploading = true;
-    elements.submit.disabled = true;
+    syncCreateControls();
     elements.submit.textContent = "Uploading";
     const totalBytes = state.files.reduce((sum, file) => sum + file.size, 0);
     let completedBytes = 0;
@@ -258,7 +280,16 @@
     try {
       if (!jobId) {
         setUploadProgress(0, "Creating job");
-        const payload = await api("/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: elements.name.value.trim(), kind: selectedKind(), quality: elements.quality.value }) });
+        const payload = await api("/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: elements.name.value.trim(),
+            kind: selectedKind(),
+            quality: elements.quality.value,
+            settings: { feature_matcher: selectedMatcher() },
+          }),
+        });
         const created = unwrapJob(payload);
         if (!created?.id) throw new Error("Server did not return a job id");
         jobId = created.id;
@@ -278,6 +309,7 @@
       elements.photoInput.value = "";
       updateFiles([]);
       updateKind();
+      updateMatcherNote();
       elements.formMessage.textContent = "";
       await closeDrawer(false, "replace");
       await selectJob(jobId, "activity", true);
@@ -286,7 +318,15 @@
       window.setTimeout(() => { elements.uploadProgress.hidden = true; }, 1800);
       elements.detailName.focus();
     } catch (error) {
-      const diskCopy = error.code === "disk_full" ? "The server does not have enough free space for this job. Remove old results or choose fewer photos." : `Upload stopped: ${error.message}. Files already received remain with this job.`;
+      const learnedUnavailable = selectedMatcher() === "learned_matcher" && (
+        error.code === "learned_matching_unavailable" || error.code === "learned_matcher_unavailable" ||
+        (error.status === 400 && /learned|feature.?matcher|unknown settings|ALIKED|LightGlue/i.test(error.message))
+      );
+      const diskCopy = error.code === "disk_full"
+        ? "The server does not have enough free space for this job. Remove old results or choose fewer photos."
+        : learnedUnavailable
+          ? "This server does not include learned matching."
+          : `Upload stopped: ${error.message}. Files already received remain with this job.`;
       elements.formMessage.textContent = diskCopy;
       elements.formMessage.focus();
       elements.submit.textContent = "Resume upload";
@@ -294,7 +334,7 @@
       await refreshJobs(false);
     } finally {
       state.uploading = false;
-      elements.submit.disabled = !state.online;
+      syncCreateControls();
       if (!state.resumeJobId) elements.submit.textContent = "Create job";
     }
   }
@@ -400,6 +440,8 @@
   function jobMetadata(job) {
     const parts = [job.kind === "splat" ? "Gaussian splat" : "Textured mesh"];
     if (job.quality && job.kind !== "splat") parts.push(`${job.quality} quality`);
+    const matcher = job.settings?.feature_matcher;
+    if (matcher) parts.push(matcher === "learned_matcher" ? "Learned matching" : "Standard matching");
     const count = job.uploaded_images ?? job.photo_count ?? job.photoCount ?? job.image_count;
     if (Number.isFinite(Number(count))) parts.push(`${count} photos`);
     const created = formatDate(job.created_at || job.createdAt);
@@ -507,7 +549,7 @@
 
   function switchView(view, push = true) {
     if (!VIEW_NAMES.has(view) || !state.selectedId) return;
-    if (state.viewerActive) deactivateViewer(false);
+    if (state.cameraMode === "free") restoreFixedView({ focus: false, announceResult: false });
     state.currentView = view;
     if (push) updateUrl({ view });
     renderView();
@@ -604,25 +646,109 @@
 
   function settingsArtifact(artifacts) { return artifacts.find((artifact) => /(^|\/)viewer-settings\.json$/i.test(artifact.name || artifact.id || "")); }
 
+  function clearViewerLoadTimers() {
+    window.clearTimeout(state.viewerSlowTimer);
+    window.clearTimeout(state.viewerTimeoutTimer);
+    state.viewerSlowTimer = null;
+    state.viewerTimeoutTimer = null;
+  }
+
+  function beginViewerLoad(label) {
+    clearViewerLoadTimers();
+    state.viewerLoadToken += 1;
+    state.viewerReady = false;
+    state.viewerLoadFailed = false;
+    const token = state.viewerLoadToken;
+    elements.viewerStatus.textContent = label;
+    state.viewerSlowTimer = window.setTimeout(() => {
+      if (token !== state.viewerLoadToken || state.viewerReady) return;
+      elements.viewerStatus.textContent = state.viewerResetting ? "Still restoring fixed view" : "Still loading fixed view";
+    }, CONFIG.viewerSlowMs);
+    state.viewerTimeoutTimer = window.setTimeout(() => {
+      failViewerLoad(token, "Fixed view timed out before the first frame. Select Fixed view to retry or download the splat.");
+    }, CONFIG.viewerTimeoutMs);
+    return token;
+  }
+
+  function failViewerLoad(token, message) {
+    if (token !== state.viewerLoadToken || state.viewerReady) return;
+    clearViewerLoadTimers();
+    state.viewerLoadFailed = true;
+    state.viewerResetting = false;
+    selectCameraMode("fixed");
+    releaseViewerInput();
+    elements.cameraFixed.disabled = false;
+    elements.cameraFree.disabled = true;
+    elements.activateViewer.disabled = true;
+    elements.viewerStatus.textContent = message;
+    announce(message);
+  }
+
+  function completeViewerFirstFrame(token) {
+    if (token !== state.viewerLoadToken || state.viewerReady) return;
+    const wasResetting = state.viewerResetting;
+    clearViewerLoadTimers();
+    state.viewerReady = true;
+    state.viewerLoadFailed = false;
+    state.viewerResetting = false;
+    selectCameraMode("fixed");
+    releaseViewerInput();
+    setCameraModeDisabled(false);
+    if (wasResetting) {
+      elements.viewerStatus.textContent = "Fixed view restored · Page scrolling available";
+      if (state.restoreFixedFocus) elements.cameraFixed.focus();
+      if (state.announceFixedRestore) announce("Fixed view restored. Page scrolling available.");
+    } else {
+      elements.viewerStatus.textContent = "Fixed view ready · Page scrolling available";
+    }
+    state.restoreFixedFocus = false;
+    state.announceFixedRestore = false;
+  }
+
+  function viewerIsFullscreen() {
+    const parentFullscreen = document.fullscreenElement;
+    let childFullscreen = null;
+    try { childFullscreen = state.viewerDocument?.fullscreenElement; } catch (_) { /* no same-origin document */ }
+    return parentFullscreen === elements.splatViewer || parentFullscreen === elements.splatViewerFrame || Boolean(childFullscreen);
+  }
+
+  function syncViewerFullscreenState() {
+    const viewerFullscreen = viewerIsFullscreen();
+    const exitedViewerFullscreen = state.viewerFullscreen && !viewerFullscreen;
+    state.viewerFullscreen = viewerFullscreen;
+    elements.fullscreenViewer.textContent = viewerFullscreen ? "Exit full screen" : "Full screen";
+    if (exitedViewerFullscreen && state.cameraMode === "free") restoreFixedView({ focus: true, announceResult: true });
+  }
+
   function detachViewerBridge() {
-    if (!state.viewerDocument || !state.viewerHandlers) return;
-    const { wheel, keydown, pointerdown, pointerup } = state.viewerHandlers;
-    state.viewerDocument.removeEventListener("wheel", wheel);
-    state.viewerDocument.removeEventListener("keydown", keydown);
-    state.viewerDocument.removeEventListener("pointerdown", pointerdown);
-    state.viewerDocument.removeEventListener("pointerup", pointerup);
+    if (!state.viewerHandlers) return;
+    const { document: viewerDocument, window: viewerWindow, wheel, keydown, pointerdown, pointerup, fullscreenchange, error, unhandledrejection, firstFrame } = state.viewerHandlers;
+    viewerDocument?.removeEventListener("wheel", wheel);
+    viewerDocument?.removeEventListener("keydown", keydown);
+    viewerDocument?.removeEventListener("pointerdown", pointerdown);
+    viewerDocument?.removeEventListener("pointerup", pointerup);
+    viewerDocument?.removeEventListener("fullscreenchange", fullscreenchange);
+    viewerWindow?.removeEventListener("error", error);
+    viewerWindow?.removeEventListener("unhandledrejection", unhandledrejection);
+    try { if (viewerWindow?.firstFrame === firstFrame) delete viewerWindow.firstFrame; } catch (_) { /* document was replaced */ }
     state.viewerDocument = null;
     state.viewerHandlers = null;
   }
 
   function clearSplatViewer() {
-    deactivateViewer(false);
+    releaseViewerInput();
     detachViewerBridge();
+    clearViewerLoadTimers();
+    state.viewerLoadToken += 1;
     state.splatViewerFor = null;
     state.viewerUrl = null;
     state.viewerReady = false;
     state.viewerResetting = false;
-    elements.frameResult.disabled = true;
+    state.viewerLoadFailed = false;
+    state.restoreFixedFocus = false;
+    state.announceFixedRestore = false;
+    selectCameraMode("fixed");
+    setCameraModeDisabled(true);
     elements.splatViewer.hidden = true;
     elements.splatViewerFrame.removeAttribute("src");
     elements.downloadSplat.removeAttribute("href");
@@ -630,9 +756,9 @@
 
   function ensureViewerLoaded() {
     if (!state.viewerUrl || elements.splatViewerFrame.getAttribute("src")) return;
-    state.viewerReady = false;
-    elements.frameResult.disabled = true;
-    elements.viewerStatus.textContent = "Loading interactive result";
+    selectCameraMode("fixed");
+    setCameraModeDisabled(true);
+    beginViewerLoad("Loading fixed view");
     elements.splatViewerFrame.src = state.viewerUrl;
   }
 
@@ -649,6 +775,7 @@
       params.set("settings", settingsVersion == null ? settingsUrl : `${settingsUrl}${settingsUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(settingsVersion)}`);
     }
     params.set("nofx", "");
+    params.set("noanim", "");
     const viewerUrl = `/viewer/index.html?${params}`;
     const viewerKey = `${job.id}:${artifactName}:${artifact.size ?? artifact.bytes ?? ""}:${settings?.name || settings?.id || "fallback"}:${settings?.size ?? settings?.bytes ?? ""}`;
     elements.splatViewerLabel.textContent = artifactName;
@@ -658,18 +785,21 @@
     elements.downloadSplat.download = artifactName;
     elements.splatViewer.hidden = false;
     if (state.splatViewerFor !== viewerKey) {
-      deactivateViewer(false);
+      releaseViewerInput();
       detachViewerBridge();
       elements.splatViewerFrame.removeAttribute("src");
       state.splatViewerFor = viewerKey;
       state.viewerUrl = viewerUrl;
       state.viewerReady = false;
       state.viewerResetting = false;
-      elements.frameResult.disabled = true;
+      state.viewerLoadFailed = false;
+      state.restoreFixedFocus = false;
+      state.announceFixedRestore = false;
+      selectCameraMode("fixed");
+      setCameraModeDisabled(true);
       elements.viewerActivation.hidden = false;
-      elements.activateViewer.disabled = false;
       const bytes = Number(artifact.size ?? artifact.bytes);
-      elements.viewerStatus.textContent = Number.isFinite(bytes) && bytes > CONFIG.viewerMemoryWarningBytes ? `Large result: ${formatBytes(bytes)}. Close other tabs before exploring.` : "Ready to load interactive result";
+      elements.viewerStatus.textContent = Number.isFinite(bytes) && bytes > CONFIG.viewerMemoryWarningBytes ? `Large result: ${formatBytes(bytes)}. Close other tabs before using Free camera.` : "Loading fixed view";
       if (state.currentView === "result") ensureViewerLoaded();
     }
     return true;
@@ -679,59 +809,104 @@
     detachViewerBridge();
     try {
       const doc = elements.splatViewerFrame.contentDocument;
-      if (!doc) return;
+      const viewerWindow = elements.splatViewerFrame.contentWindow;
+      if (!doc || !viewerWindow) return;
+      const token = state.viewerLoadToken;
       const wheel = (event) => { if (state.viewerActive) event.preventDefault(); };
-      const keydown = (event) => { if (event.key === "Escape" && state.viewerActive) { event.preventDefault(); deactivateViewer(true); } };
+      const keydown = (event) => { if (event.key === "Escape" && state.cameraMode === "free") { event.preventDefault(); restoreFixedView({ focus: true, announceResult: true }); } };
       const pointerdown = () => { if (state.viewerActive) doc.querySelector("canvas")?.style.setProperty("cursor", "grabbing"); };
       const pointerup = () => { if (state.viewerActive) doc.querySelector("canvas")?.style.setProperty("cursor", "grab"); };
+      const fullscreenchange = () => syncViewerFullscreenState();
+      const error = (event) => {
+        const errorDetail = event.message ? `: ${event.message}.` : ".";
+        failViewerLoad(token, `Interactive view failed to render${errorDetail} Download the splat or select Fixed view to retry.`);
+      };
+      const unhandledrejection = () => failViewerLoad(token, "Interactive view failed to render. Download the splat or select Fixed view to retry.");
+      const firstFrame = () => completeViewerFirstFrame(token);
       doc.addEventListener("wheel", wheel, { passive: false });
       doc.addEventListener("keydown", keydown);
       doc.addEventListener("pointerdown", pointerdown);
       doc.addEventListener("pointerup", pointerup);
+      doc.addEventListener("fullscreenchange", fullscreenchange);
+      viewerWindow.addEventListener("error", error);
+      viewerWindow.addEventListener("unhandledrejection", unhandledrejection);
+      viewerWindow.firstFrame = firstFrame;
       state.viewerDocument = doc;
-      state.viewerHandlers = { wheel, keydown, pointerdown, pointerup };
+      state.viewerHandlers = { document: doc, window: viewerWindow, wheel, keydown, pointerdown, pointerup, fullscreenchange, error, unhandledrejection, firstFrame };
       const canvas = doc.querySelector("canvas");
       if (canvas) { canvas.tabIndex = 0; canvas.style.cursor = state.viewerActive ? "grab" : "default"; }
+      const fastLoadRecheck = () => { if (viewerWindow.app) firstFrame(); };
+      queueMicrotask(fastLoadRecheck);
+      viewerWindow.requestAnimationFrame(fastLoadRecheck);
     } catch (_) {
-      elements.viewerStatus.textContent = "Interactive view loaded, but page controls cannot reach the viewer.";
+      failViewerLoad(state.viewerLoadToken, "Interactive view could not be controlled in this browser. Download the splat or select Fixed view to retry.");
     }
   }
 
+  function updateCameraHelp() {
+    elements.controlsModeCopy.textContent = state.cameraMode === "free"
+      ? "Free camera is active. Orbit, pan, and zoom controls are available."
+      : "Camera movement is locked to the generated capture view.";
+  }
+
+  function selectCameraMode(mode) {
+    state.cameraMode = mode;
+    elements.cameraFixed.checked = mode === "fixed";
+    elements.cameraFree.checked = mode === "free";
+    updateCameraHelp();
+  }
+
+  function setCameraModeDisabled(disabled) {
+    elements.cameraFixed.disabled = disabled;
+    elements.cameraFree.disabled = disabled;
+    elements.activateViewer.disabled = disabled;
+  }
+
+  function releaseViewerInput() {
+    state.viewerActive = false;
+    elements.viewerFrameShell.classList.remove("viewer-active");
+    elements.viewerActivation.hidden = false;
+    elements.exitViewer.hidden = true;
+    elements.splatViewerFrame.tabIndex = -1;
+    try { state.viewerDocument?.querySelector("canvas")?.style.setProperty("cursor", "default"); } catch (_) { /* no bridge */ }
+  }
+
   function activateViewer() {
-    if (!state.viewerUrl) return;
-    ensureViewerLoaded();
+    if (!state.viewerUrl || !state.viewerReady || state.viewerResetting) {
+      selectCameraMode("fixed");
+      return;
+    }
+    selectCameraMode("free");
+    setCameraModeDisabled(true);
+    elements.splatViewerFrame.tabIndex = 0;
     state.viewerActive = true;
     elements.viewerFrameShell.classList.add("viewer-active");
     elements.viewerActivation.hidden = true;
     elements.exitViewer.hidden = false;
-    elements.viewerStatus.textContent = "3D viewer active · Press Escape to return to page scrolling";
+    elements.viewerStatus.textContent = "Activating free camera";
     localStorage.setItem("viewerHelpSeen", "1");
     try {
       const canvas = elements.splatViewerFrame.contentDocument?.querySelector("canvas");
       if (canvas) { canvas.tabIndex = 0; canvas.style.cursor = "grab"; canvas.focus(); }
       else elements.splatViewerFrame.focus();
     } catch (_) { elements.splatViewerFrame.focus(); }
-    announce("3D viewer active. Press Escape to return to page scrolling.");
+    window.setTimeout(() => {
+      if (state.cameraMode !== "free" || !state.viewerActive) return;
+      setCameraModeDisabled(false);
+      elements.viewerStatus.textContent = "Free camera active · Press Escape to return to fixed view";
+      announce("Free camera active. Press Escape to return to fixed view.");
+    }, 0);
   }
 
-  function deactivateViewer(returnFocus = true) {
-    if (!state.viewerActive && !elements.viewerFrameShell.classList.contains("viewer-active")) return;
-    state.viewerActive = false;
-    elements.viewerFrameShell.classList.remove("viewer-active");
-    elements.viewerActivation.hidden = false;
-    elements.exitViewer.hidden = true;
-    elements.viewerStatus.textContent = state.viewerReady ? "Interactive result ready · Page scrolling restored" : "Loading interactive result";
-    try { state.viewerDocument?.querySelector("canvas")?.style.setProperty("cursor", "default"); } catch (_) { /* no bridge */ }
-    if (returnFocus) elements.activateViewer.focus();
-  }
-
-  function frameResult() {
-    if (!state.viewerUrl || !state.viewerReady || state.viewerResetting) return;
-    deactivateViewer(false);
+  function restoreFixedView({ focus = true, announceResult = true } = {}) {
+    if (!state.viewerUrl) return;
+    selectCameraMode("fixed");
+    releaseViewerInput();
+    state.restoreFixedFocus = focus;
+    state.announceFixedRestore = announceResult;
     state.viewerResetting = true;
-    state.viewerReady = false;
-    elements.frameResult.disabled = true;
-    elements.viewerStatus.textContent = "Resetting view";
+    setCameraModeDisabled(true);
+    beginViewerLoad("Restoring fixed view");
     try { elements.splatViewerFrame.contentWindow.location.reload(); }
     catch (_) { elements.splatViewerFrame.src = state.viewerUrl; }
   }
@@ -741,7 +916,7 @@
       if (document.fullscreenElement === elements.splatViewer) await document.exitFullscreen();
       else await elements.splatViewer.requestFullscreen();
     } catch (_) {
-      window.open(state.viewerUrl, "_blank", "noopener");
+      elements.viewerStatus.textContent = "Full screen is unavailable in this browser";
     }
   }
 
@@ -862,9 +1037,14 @@
 
   function bindEvents() {
     elements.form.addEventListener("submit", submitJob);
-    elements.form.addEventListener("change", (event) => { if (event.target.name === "kind") updateKind(); });
-    elements.dropZone.addEventListener("click", () => elements.photoInput.click());
-    elements.dropZone.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); elements.photoInput.click(); } });
+    elements.form.addEventListener("change", (event) => {
+      if (event.target.name === "kind") updateKind();
+      if (event.target.name === "feature_matcher") updateMatcherNote();
+    });
+    elements.dropZone.addEventListener("click", () => { if (elements.dropZone.getAttribute("aria-disabled") !== "true") elements.photoInput.click(); });
+    elements.dropZone.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") && elements.dropZone.getAttribute("aria-disabled") !== "true") { event.preventDefault(); elements.photoInput.click(); }
+    });
     elements.photoInput.addEventListener("change", () => updateFiles([...elements.photoInput.files]));
     elements.clearFiles.addEventListener("click", () => { elements.photoInput.value = ""; updateFiles([]); });
     ["dragenter", "dragover"].forEach((name) => elements.dropZone.addEventListener(name, (event) => { event.preventDefault(); elements.dropZone.classList.add("dragging"); }));
@@ -901,8 +1081,12 @@
       elements.jobLogs.setAttribute("aria-live", elements.followLogs.checked ? "polite" : "off");
     });
     elements.activateViewer.addEventListener("click", activateViewer);
-    elements.exitViewer.addEventListener("click", () => deactivateViewer(true));
-    elements.frameResult.addEventListener("click", frameResult);
+    elements.exitViewer.addEventListener("click", () => restoreFixedView({ focus: true, announceResult: true }));
+    elements.cameraFixed.addEventListener("change", () => { if (elements.cameraFixed.checked) restoreFixedView({ focus: true, announceResult: true }); });
+    elements.cameraFixed.addEventListener("click", () => {
+      if (elements.cameraFixed.checked && state.viewerLoadFailed && !state.viewerResetting) restoreFixedView({ focus: true, announceResult: true });
+    });
+    elements.cameraFree.addEventListener("change", () => { if (elements.cameraFree.checked) activateViewer(); });
     elements.viewerControls.addEventListener("click", () => {
       const open = elements.controlsHelp.hidden;
       elements.controlsHelp.hidden = !open;
@@ -911,35 +1095,17 @@
     elements.fullscreenViewer.addEventListener("click", toggleFullscreen);
     elements.splatViewerFrame.addEventListener("load", () => {
       if (!state.viewerUrl || elements.splatViewerFrame.src === "about:blank") return;
-      const wasResetting = state.viewerResetting;
-      state.viewerReady = true;
-      state.viewerResetting = false;
-      elements.frameResult.disabled = false;
       installViewerBridge();
-      if (state.viewerActive) {
-        const canvas = state.viewerDocument?.querySelector("canvas");
-        if (canvas) canvas.focus();
-        else elements.splatViewerFrame.focus();
-        elements.viewerStatus.textContent = "3D viewer active · Press Escape to return to page scrolling";
-      } else {
-        elements.viewerStatus.textContent = wasResetting ? "View reset · Select Explore in 3D" : "Interactive result ready · Select Explore in 3D";
-      }
     });
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && state.viewerActive) { event.preventDefault(); deactivateViewer(true); return; }
+      if (event.key === "Escape" && state.cameraMode === "free") { event.preventDefault(); restoreFixedView({ focus: true, announceResult: true }); return; }
       if (event.key === "?" && !["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) {
         event.preventDefault();
         elements.controlsHelp.hidden = !elements.controlsHelp.hidden;
         elements.viewerControls.setAttribute("aria-expanded", String(!elements.controlsHelp.hidden));
       }
     });
-    document.addEventListener("fullscreenchange", () => {
-      const viewerFullscreen = document.fullscreenElement === elements.splatViewer;
-      const exitedViewerFullscreen = state.viewerFullscreen && !viewerFullscreen;
-      state.viewerFullscreen = viewerFullscreen;
-      elements.fullscreenViewer.textContent = viewerFullscreen ? "Exit full screen" : "Full screen";
-      if (exitedViewerFullscreen && state.viewerActive) deactivateViewer(true);
-    });
+    document.addEventListener("fullscreenchange", syncViewerFullscreenState);
     elements.dismissToast.addEventListener("click", () => { elements.toast.hidden = true; });
     window.addEventListener("popstate", handlePopState);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshJobs(false); });
@@ -964,6 +1130,8 @@
 
   bindEvents();
   updateKind();
+  updateMatcherNote();
+  syncCreateControls();
   elements.followLogs.checked = localStorage.getItem("followLogs") !== "false";
   initializeUrlState();
   poll();

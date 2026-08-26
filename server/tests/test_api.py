@@ -83,6 +83,7 @@ class ApiTests(unittest.TestCase):
         status, health = self.request("GET", "/api/v1/health")
         self.assertEqual(200, status)
         self.assertEqual("ok", health["status"])
+        self.assertFalse(health["capabilities"]["learned_matching"])
 
     def test_filename_and_settings_validation(self):
         with self.assertRaises(ValueError):
@@ -93,6 +94,30 @@ class ApiTests(unittest.TestCase):
             {"kind": "splat", "settings": {"splat_steps": 1234}}
         )
         self.assertEqual(1234, settings["splat_steps"])
+        self.assertEqual("exhaustive_matcher", settings["feature_matcher"])
+        _, _, _, learned = validate_job_payload(
+            {"kind": "mesh", "settings": {"feature_matcher": "learned_matcher"}}
+        )
+        self.assertEqual("learned_matcher", learned["feature_matcher"])
+        with self.assertRaises(ValueError):
+            validate_job_payload({"settings": {"feature_matcher": "unverified_matcher"}})
+
+    def test_learned_job_is_rejected_when_runtime_models_are_missing(self):
+        body = json.dumps(
+            {"name": "Difficult capture", "settings": {"feature_matcher": "learned_matcher"}}
+        )
+        status, error = self.request("POST", "/api/v1/jobs", body)
+        self.assertEqual(422, status)
+        self.assertEqual("learned_matcher_unavailable", error["code"])
+        self.assertEqual("This server does not include learned matching.", error["error"])
+
+        self.server.learned_matching_supported = True
+        status, health = self.request("GET", "/api/v1/health")
+        self.assertEqual(200, status)
+        self.assertTrue(health["capabilities"]["learned_matching"])
+        status, job = self.request("POST", "/api/v1/jobs", body)
+        self.assertEqual(201, status)
+        self.assertEqual("learned_matcher", job["settings"]["feature_matcher"])
 
     def test_completed_splat_exposes_diagnostics_and_framing_artifact(self):
         job = self.server.store.create_job(
