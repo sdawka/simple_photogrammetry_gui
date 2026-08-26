@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from server.pipeline import Pipeline, Toolchain
@@ -46,7 +47,11 @@ class FakeRunner:
         elif command == "decimateMesh":
             (Path(args[args.index("-o") + 1]) / "model_surface_decimated.ply").touch()
         elif command == "texrecon":
-            Path(args[-1] + ".obj").touch()
+            output = Path(args[-1])
+            output.with_suffix(".obj").touch()
+            output.with_suffix(".mtl").touch()
+            Path(f"{output}_material0000_map_Kd.png").touch()
+            Path(f"{output}_data_costs.spt").touch()
         elif command == "brush_app":
             (Path(args[args.index("--export-path") + 1]) / "splat_30000.ply").touch()
 
@@ -83,7 +88,22 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual("11", poisson[poisson.index("--depth") + 1])
             texture = next(args for name, args, _ in fake.commands if name == "texrecon")
             self.assertEqual("--keep_unseen_faces", texture[0])
-            self.assertTrue((pipeline.results / "textured.obj").exists())
+            archive = pipeline.results / "textured_mesh.zip"
+            self.assertTrue(archive.exists())
+            self.assertTrue((pipeline.results / "preview.png").exists())
+            with zipfile.ZipFile(archive) as bundle:
+                self.assertEqual(
+                    {
+                        "textured.obj",
+                        "textured.mtl",
+                        "textured_material0000_map_Kd.png",
+                    },
+                    set(bundle.namelist()),
+                )
+            self.assertEqual(
+                {"preview.png", "textured_mesh.zip"},
+                {path.name for path in pipeline.results.iterdir()},
+            )
         finally:
             temporary.cleanup()
 

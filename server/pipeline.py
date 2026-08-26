@@ -8,6 +8,7 @@ import signal
 import subprocess
 import threading
 import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -458,18 +459,35 @@ class Pipeline:
         self._stage("mesh", "Reconstruct mesh", 10, total, reconstruct)
 
         def texture() -> None:
-            temporary = self.results / "tmp"
-            if temporary.exists():
-                shutil.rmtree(temporary)
+            texture_dir = self.work / "textured_output"
+            if texture_dir.exists():
+                shutil.rmtree(texture_dir)
+            texture_dir.mkdir()
             mesh_type = job["settings"].get("mesh_type", "poissonrecon")
             mesh = self.work / ("model_surface_decimated.ply" if mesh_type == "poissonrecon" else "model_surface.ply")
+            output_base = texture_dir / "textured"
             self.runner.run(
                 self.tools.texrecon,
-                ["--keep_unseen_faces", images / "project.nvm", mesh, self.results / "textured"],
+                ["--keep_unseen_faces", images / "project.nvm", mesh, output_base],
                 cwd=dense / "images",
             )
-            if not (self.results / "textured.obj").exists():
+            obj = output_base.with_suffix(".obj")
+            mtl = output_base.with_suffix(".mtl")
+            textures = sorted(texture_dir.glob("textured_material*_map_Kd.*"))
+            if not obj.exists() or not mtl.exists() or not textures:
                 raise PipelineError("texrecon completed without producing textured.obj")
+
+            # An OBJ's MTL and texture atlases must travel together. Publish a
+            # single portable archive and one browser preview, leaving solver
+            # scratch files in work/ instead of exposing them as artifacts.
+            archive = self.results / "textured_mesh.zip"
+            archive.unlink(missing_ok=True)
+            with zipfile.ZipFile(
+                archive, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True
+            ) as bundle:
+                for path in [obj, mtl, *textures]:
+                    bundle.write(path, arcname=path.name)
+            shutil.copy2(textures[0], self.results / "preview.png")
 
         self._stage("texture", "Texture mesh", 11, total, texture)
 
